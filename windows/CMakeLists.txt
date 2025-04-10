@@ -92,6 +92,7 @@ target_link_libraries(${PLUGIN_NAME} PRIVATE
   flutter 
   flutter_wrapper_plugin
   "${WEBVIEW2_LIB_DIR}/WebView2Loader.dll.lib"
+  RuntimeObject.lib
 )
 
 # Copy WebView2Loader.dll to output directory
@@ -158,3 +159,10 @@ add_custom_command(TARGET ${TEST_RUNNER} POST_BUILD
 include(GoogleTest)
 gtest_discover_tests(${TEST_RUNNER})
 endif()
+
+# Add Windows Runtime support
+target_compile_definitions(${PLUGIN_NAME} PRIVATE 
+  WINVER=0x0A00 
+  _WIN32_WINNT=0x0A00
+  NTDDI_VERSION=NTDDI_WIN10
+)

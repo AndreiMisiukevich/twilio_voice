@@ -1,6 +1,11 @@
 #ifndef FLUTTER_PLUGIN_TWILIO_VOICE_PLUGIN_H_
 #define FLUTTER_PLUGIN_TWILIO_VOICE_PLUGIN_H_
 
+#include <windows.h>
+#include <windows.ui.notifications.h>
+#include <wrl.h>
+#include <wrl/wrappers/corewrappers.h>
+#include <windows.data.xml.dom.h>
 #include <flutter/method_channel.h>
 #include <flutter/event_channel.h>
 #include <flutter/event_stream_handler_functions.h>
@@ -8,45 +13,91 @@
 #include "webview/tv_webview.h"
 #include "js_interop/call/tv_call.h"
 #include <memory>
+#include <map>
+#include <notificationactivationcallback.h>
+#include <shobjidl.h>
+#include <shlobj.h>
+#include <propvarutil.h>
 
 namespace twilio_voice {
 
-class TwilioVoicePlugin : public flutter::Plugin, public TVCallDelegate {
+// Define the GUID for the notification activation callback
+// {A9B4F96E-0E54-4B7A-B8B2-2BF72E1E83B4}
+DEFINE_GUID(CLSID_TVNotificationActivationCallback,
+    0xa9b4f96e, 0xe54, 0x4b7a, 0xb8, 0xb2, 0x2b, 0xf7, 0x2e, 0x1e, 0x83, 0xb4);
+
+class TVNotificationManager {
+public:
+    static TVNotificationManager& getInstance();
+    void showIncomingCallNotification(const std::string& from, const std::string& callSid);
+    void hideNotification(const std::string& callSid);
+    void hideAllNotifications();
+    static void setWebView(TVWebView* webview) { webview_ = webview; }
+    bool hasNotificationPermission();
+    bool requestNotificationPermission();
+    static bool RegisterCOMServer();
+    static void UnregisterCOMServer();
+
+protected:
+    static TVWebView* webview_;
+    static DWORD comRegistrationCookie;
+
+private:
+    TVNotificationManager();
+    ~TVNotificationManager() = default;
+
+    void ShowNotificationInternal(const std::string& from, const std::string& callSid);
+    bool InitializeNotificationSystem();
+
+    Microsoft::WRL::ComPtr<ABI::Windows::UI::Notifications::IToastNotificationManagerStatics> toastManager;
+    Microsoft::WRL::ComPtr<ABI::Windows::UI::Notifications::IToastNotifier> toastNotifier;
+    std::map<std::string, Microsoft::WRL::ComPtr<ABI::Windows::UI::Notifications::IToastNotification>> activeNotifications;
+    
+    friend class TVNotificationActivationCallback;
+};
+
+class TVNotificationActivationCallback : public Microsoft::WRL::RuntimeClass<
+    Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>,
+    INotificationActivationCallback> {
+public:
+    TVNotificationActivationCallback() = default;
+    ~TVNotificationActivationCallback() = default;
+
+    // INotificationActivationCallback
+    IFACEMETHODIMP Activate(
+        LPCWSTR appUserModelId,
+        LPCWSTR invokedArgs,
+        const NOTIFICATION_USER_INPUT_DATA* data,
+        ULONG count) override;
+
+private:
+    HRESULT HandleNotificationAction(const std::wstring& action);
+};
+
+class TwilioVoicePlugin : public flutter::Plugin {
  public:
   static void RegisterWithRegistrar(flutter::PluginRegistrarWindows *registrar);
 
   TwilioVoicePlugin(flutter::PluginRegistrarWindows* registrar);
   virtual ~TwilioVoicePlugin();
 
-  // TVCallDelegate implementation
-  void onCallAccept(TVCall* call) override;
-  void onCallCancel(TVCall* call) override;
-  void onCallDisconnect(TVCall* call) override;
-  void onCallError(const TVError& error) override;
-  void onCallReconnecting(const TVError& error) override;
-  void onCallReconnected() override;
-  void onCallReject() override;
-  void onCallStatus(const TVCallStatus& status) override;
+  // Static methods for call handling
+  static void AnswerCall(TVWebView* webview, std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result);
+  static void HangUpCall(TVWebView* webview, std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result);
 
  private:
   std::unique_ptr<TVWebView> webview_;
-  std::unique_ptr<TVCall> activeCall_;
   std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>> channel_;
   std::unique_ptr<flutter::EventChannel<flutter::EncodableValue>> event_channel_;
   std::unique_ptr<flutter::StreamHandler<flutter::EncodableValue>> stream_handler_;
   flutter::PluginRegistrarWindows* registrar_;
   flutter::EventSink<flutter::EncodableValue>* event_sink_ = nullptr;
   
-  // Flag to track if SDK is ready
-  bool sdk_ready_ = false;
-  
   void InitializeWebView();
-  void HandleCallEvent(const std::string& event, const std::string& data);
   void SendEventToFlutter(const std::string& event);
 
   // Mic permission handling
-  bool CheckMicrophonePermission();
-  bool RequestMicrophonePermission();
+  void CheckMicrophonePermission(std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result = nullptr);
 
   // Disallow copy and assign.
   TwilioVoicePlugin(const TwilioVoicePlugin&) = delete;
