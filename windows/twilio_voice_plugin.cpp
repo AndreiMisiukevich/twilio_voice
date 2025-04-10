@@ -194,6 +194,17 @@ namespace twilio_voice
                         std::string callSid = json.value("callSid", "");
                         TVNotificationManager::getInstance().showIncomingCallNotification(from, callSid);
                         SendEventToFlutter("Incoming|" + from + "|" + to + "|Incoming");
+                      } else if (eventValue == "cancel") {
+                        // Handle missed call
+                        std::string from = json.value("from", "");
+                        std::string to = json.value("to", "");
+                        std::string callSid = json.value("callSid", "");
+                        // Hide the previous incoming call notification
+                        TVNotificationManager::getInstance().hideNotification(callSid, true);
+                        // Show missed call notification
+                        TVNotificationManager::getInstance().showMissedCallNotification(from, callSid);
+                        SendEventToFlutter("Missed Call");
+                        SendEventToFlutter("Call Ended");
                       } else if (eventValue == "connected") {
                         std::string from = json.value("from", "");
                         std::string to = json.value("to", "");
@@ -277,13 +288,41 @@ namespace twilio_voice
                                            L"    window.device.on('incoming', (call) => {"
                                            L"      const params = call.parameters;"
                                            L"      window.connection = call;"
-                                           L"      window.connection.on('accept', () => {"
+                                           L"      call.on('accept', () => {"
                                            L"        window.chrome.webview.postMessage({"
                                            L"          type: 'call_event',"
                                            L"          event: 'accept',"
                                            L"          from: params.From,"
                                            L"          to: params.To,"
                                            L"          callSid: params.CallSid"
+                                           L"        });"
+                                           L"      });"
+                                           L"      call.on('cancel', () => {"
+                                           L"        window.chrome.webview.postMessage({"
+                                           L"          type: 'call_event',"
+                                           L"          event: 'cancel',"
+                                           L"          from: params.From,"
+                                           L"          to: params.To,"
+                                           L"          callSid: params.CallSid"
+                                           L"        });"
+                                           L"      });"
+                                           L"      call.on('disconnect', () => {"
+                                           L"        window.chrome.webview.postMessage({"
+                                           L"          type: 'call_event',"
+                                           L"          event: 'disconnected'"
+                                           L"        });"
+                                           L"      });"
+                                           L"      call.on('error', (error) => {"
+                                           L"        window.chrome.webview.postMessage({"
+                                           L"          type: 'call_event',"
+                                           L"          event: 'error',"
+                                           L"          error: error.message"
+                                           L"        });"
+                                           L"      });"
+                                           L"      call.on('reject', () => {"
+                                           L"        window.chrome.webview.postMessage({"
+                                           L"          type: 'call_event',"
+                                           L"          event: 'reject'"
                                            L"        });"
                                            L"      });"
                                            L"      window.chrome.webview.postMessage({"
@@ -374,92 +413,7 @@ namespace twilio_voice
         return;
       }
 
-      std::wstring wfrom(from.begin(), from.end());
-      std::wstring wto(to.begin(), to.end());
-
-      std::wstring js_code = L"(async () => {"
-                             L"try {"
-                             L"  window.chrome.webview.postMessage({"
-                             L"    type: 'call_event',"
-                             L"    event: 'ringing'"
-                             L"  });"
-                             L"  if (typeof Twilio === 'undefined') {"
-                             L"    throw new Error('Twilio SDK not loaded - please wait for initialization');"
-                             L"  }"
-                             L"  if (!window.device) {"
-                             L"    throw new Error('Twilio Device not initialized - please call tokens() first');"
-                             L"  }"
-                             L"  const params = {"
-                             L"    params: {"
-                             L"      To: '" +
-                             wto + L"',"
-                                   L"      From: '" +
-                             wfrom + L"'"
-                                     L"    },"
-                                     L"    codecPreferences: ['opus', 'pcmu']"
-                                     L"  };"
-                                     L"  window.connection = await window.device.connect(params);"
-                                     L"  if (!window.connection) {"
-                                     L"    throw new Error('Failed to create connection - connection is null');"
-                                     L"  }"
-                                     L"  window.connection.on('accept', () => {"
-                                     L"    window.chrome.webview.postMessage({"
-                                     L"      type: 'call_event',"
-                                     L"      event: 'accept'"
-                                     L"    });"
-                                     L"  });"
-                                     L"  window.connection.on('disconnect', () => {"
-                                     L"    window.chrome.webview.postMessage({"
-                                     L"      type: 'call_event',"
-                                     L"      event: 'disconnected'"
-                                     L"    });"
-                                     L"  });"
-                                     L"  window.connection.on('error', (error) => {"
-                                     L"    window.chrome.webview.postMessage({"
-                                     L"      type: 'call_event',"
-                                     L"      event: 'error',"
-                                     L"      error: error.message"
-                                     L"    });"
-                                     L"  });"
-                                     L"  window.connection.on('reject', () => {"
-                                     L"    window.chrome.webview.postMessage({"
-                                     L"      type: 'call_event',"
-                                     L"      event: 'reject'"
-                                     L"    });"
-                                     L"  });"
-                                     L"  window.connection.on('cancel', () => {"
-                                     L"    window.chrome.webview.postMessage({"
-                                     L"      type: 'call_event',"
-                                     L"      event: 'cancel'"
-                                     L"    });"
-                                     L"  });"
-                                     L"  return '';"
-                                     L"} catch (error) {"
-                                     L"  window.chrome.webview.postMessage({"
-                                     L"    type: 'call_event',"
-                                     L"    event: 'error',"
-                                     L"    error: error.message"
-                                     L"  });"
-                                     L"  throw error;"
-                                     L"}"
-                                     L"})()";
-
-      auto shared_result = std::make_shared<std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>>>(
-          std::move(result));
-
-      webview_->evaluateJavaScript(
-          js_code,
-          [shared_result](void *, std::string error)
-          {
-            if (error != "{}")
-            {
-              (*shared_result)->Error("CALL_FAILED", error);
-            }
-            else
-            {
-              (*shared_result)->Success(true);
-            }
-          });
+      MakeCall(webview_.get(), from, to, std::move(result));
     }
     else if (method == "toggleMute")
     {
@@ -530,6 +484,54 @@ namespace twilio_voice
     else if (method == "answer")
     {
       AnswerCall(webview_.get(), std::move(result));
+    }
+    else if (method == "missedCall")
+    {
+      if (!webview_)
+      {
+        result->Error("NOT_READY", "WebView not initialized");
+        return;
+      }
+
+      const auto *arguments = std::get_if<flutter::EncodableMap>(method_call.arguments());
+      if (!arguments)
+      {
+        result->Error("INVALID_ARGUMENTS", "Invalid arguments for missedCall");
+        return;
+      }
+
+      std::string from;
+      std::string callSid;
+
+      for (const auto &[key, value] : *arguments)
+      {
+        if (!std::holds_alternative<std::string>(key) ||
+            !std::holds_alternative<std::string>(value))
+        {
+          continue;
+        }
+
+        auto keyStr = std::get<std::string>(key);
+        auto valueStr = std::get<std::string>(value);
+
+        if (keyStr == "From")
+        {
+          from = valueStr;
+        }
+        else if (keyStr == "CallSid")
+        {
+          callSid = valueStr;
+        }
+      }
+
+      if (from.empty() || callSid.empty())
+      {
+        result->Error("INVALID_ARGUMENTS", "From and CallSid parameters are required");
+        return;
+      }
+
+      TVNotificationManager::getInstance().showMissedCallNotification(from, callSid);
+      result->Success(true);
     }
     else if (method == "hasMicPermission")
     {
@@ -692,7 +694,7 @@ namespace twilio_voice
           {
             if (!callSid.empty() && callSid != "\"\"")
             {
-              TVNotificationManager::getInstance().hideNotification(callSid);
+              TVNotificationManager::getInstance().hideNotification(callSid, true);
             }
           });
     }
@@ -792,7 +794,7 @@ namespace twilio_voice
                 callSid = callSid.substr(1, callSid.length() - 2);
               }
               TV_LOG_DEBUG("HangUp CallSid hideNotification: " + callSid);
-              TVNotificationManager::getInstance().hideNotification(callSid);
+              TVNotificationManager::getInstance().hideNotification(callSid, true);
             }
           });
     }
@@ -877,6 +879,123 @@ namespace twilio_voice
             else
             {
               TV_LOG_ERROR("Hangup error from notification: " + response);
+            }
+          });
+    }
+  }
+
+  void TwilioVoicePlugin::MakeCall(TVWebView *webview, const std::string &from, const std::string &to, std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result)
+  {
+    TV_LOG_DEBUG("Executing makeCall command");
+
+    if (!webview)
+    {
+      if (result)
+      {
+        result->Error("NOT_READY", "WebView not initialized");
+      }
+      return;
+    }
+
+    std::wstring wfrom(from.begin(), from.end());
+    std::wstring wto(to.begin(), to.end());
+
+    std::wstring js_code = L"(async () => {"
+                           L"try {"
+                           L"  window.chrome.webview.postMessage({"
+                           L"    type: 'call_event',"
+                           L"    event: 'ringing'"
+                           L"  });"
+                           L"  if (typeof Twilio === 'undefined') {"
+                           L"    throw new Error('Twilio SDK not loaded - please wait for initialization');"
+                           L"  }"
+                           L"  if (!window.device) {"
+                           L"    throw new Error('Twilio Device not initialized - please call tokens() first');"
+                           L"  }"
+                           L"  const params = {"
+                           L"    params: {"
+                           L"      To: '" + wto + L"',"
+                           L"      From: '" + wfrom + L"'"
+                           L"    },"
+                           L"    codecPreferences: ['opus', 'pcmu']"
+                           L"  };"
+                           L"  window.connection = await window.device.connect(params);"
+                           L"  if (!window.connection) {"
+                           L"    throw new Error('Failed to create connection - connection is null');"
+                           L"  }"
+                           L"  window.connection.on('accept', () => {"
+                           L"    window.chrome.webview.postMessage({"
+                           L"      type: 'call_event',"
+                           L"      event: 'accept'"
+                           L"    });"
+                           L"  });"
+                           L"  window.connection.on('disconnect', () => {"
+                           L"    window.chrome.webview.postMessage({"
+                           L"      type: 'call_event',"
+                           L"      event: 'disconnected'"
+                           L"    });"
+                           L"  });"
+                           L"  window.connection.on('error', (error) => {"
+                           L"    window.chrome.webview.postMessage({"
+                           L"      type: 'call_event',"
+                           L"      event: 'error',"
+                           L"      error: error.message"
+                           L"    });"
+                           L"  });"
+                           L"  window.connection.on('reject', () => {"
+                           L"    window.chrome.webview.postMessage({"
+                           L"      type: 'call_event',"
+                           L"      event: 'reject'"
+                           L"    });"
+                           L"  });"
+                           L"  window.connection.on('cancel', () => {"
+                           L"    window.chrome.webview.postMessage({"
+                           L"      type: 'call_event',"
+                           L"      event: 'cancel',"
+                           L"      from: window.connection.parameters.From,"
+                           L"      to: window.connection.parameters.To,"
+                           L"      callSid: window.connection.parameters.CallSid"
+                           L"    });"
+                           L"  });"
+                           L"  return '';"
+                           L"} catch (error) {"
+                           L"  window.chrome.webview.postMessage({"
+                           L"    type: 'call_event',"
+                           L"    event: 'error',"
+                           L"    error: error.message"
+                           L"  });"
+                           L"  throw error;"
+                           L"}"
+                           L"})()";
+
+    if (result)
+    {
+      auto shared_result = std::make_shared<std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>>>(
+          std::move(result));
+
+      webview->evaluateJavaScript(
+          js_code,
+          [shared_result](void *, std::string error)
+          {
+            if (error != "{}")
+            {
+              (*shared_result)->Error("CALL_FAILED", error);
+            }
+            else
+            {
+              (*shared_result)->Success(true);
+            }
+          });
+    }
+    else
+    {
+      webview->evaluateJavaScript(
+          js_code,
+          [](void *, std::string response)
+          {
+            if (response != "{}")
+            {
+              TV_LOG_ERROR("Call error from notification: " + response);
             }
           });
     }
@@ -1038,10 +1157,30 @@ namespace twilio_voice
       }
     }
 
-    ShowNotificationInternal(from, callSid);
+    ShowNotificationInternal(from, callSid, true);
   }
 
-  void TVNotificationManager::ShowNotificationInternal(const std::string &from, const std::string &callSid)
+  void TVNotificationManager::showMissedCallNotification(const std::string &from, const std::string &callSid)
+  {
+    if (!toastNotifier)
+    {
+      return;
+    }
+
+    if (!hasNotificationPermission())
+    {
+      TV_LOG_ERROR("Windows notification permission not granted");
+      if (!requestNotificationPermission())
+      {
+        TV_LOG_ERROR("Failed to request notification permission");
+        return;
+      }
+    }
+
+    ShowNotificationInternal(from, callSid, false);
+  }
+
+  void TVNotificationManager::ShowNotificationInternal(const std::string &from, const std::string &callSid, bool isIncomingCall)
   {
     Microsoft::WRL::ComPtr<ABI::Windows::Data::Xml::Dom::IXmlDocument> xmlDoc;
     HRESULT hr = Windows::Foundation::ActivateInstance(
@@ -1073,20 +1212,30 @@ namespace twilio_voice
         MultiByteToWideChar(CP_UTF8, 0, callSid.c_str(), -1, &wCallSid[0], wideLength);
       }
 
-      std::wstring xml = L"<toast>"
+      // Store the notification arguments for later use
+      lastNotificationArgs_ = L"from:" + wFrom + L"|to:" + wCallSid;
+
+      std::wstring title = isIncomingCall ? L"Incoming Call" : L"Missed Call";
+      std::wstring scenario = isIncomingCall ? L" scenario='alarm' silent='true'" : L"";
+      std::wstring xml = L"<toast" + scenario + L">"
                          L"<visual><binding template='ToastGeneric'>"
-                         L"<text>Incoming Call</text>"
-                         L"<text>" +
-                         wFrom + L"</text>"
-                                 L"</binding></visual>"
-                                 L"<actions>"
-                                 L"<action content='Accept' arguments='accept:" +
-                         wCallSid + L"' activationType='foreground'/>"
-                                    L"<action content='Reject' arguments='reject:" +
-                         wCallSid + L"' activationType='foreground'/>"
-                                    L"</actions>"
-                                    L"<audio src='ms-winsoundevent:Notification.Looping.Call' loop='true'/>"
-                                    L"</toast>";
+                         L"<text>" + title + L"</text>"
+                         L"<text>" + wFrom + L"</text>"
+                         L"</binding></visual>"
+                         L"<actions>";
+
+      if (isIncomingCall)
+      {
+        xml += L"<action content='Accept' arguments='accept:" + wCallSid + L"' activationType='foreground'/>"
+               L"<action content='Reject' arguments='reject:" + wCallSid + L"' activationType='foreground'/>";
+      }
+      else
+      {
+        xml += L"<action content='Call Back' arguments='call:" + wCallSid + L"' activationType='foreground'/>";
+      }
+
+      xml += L"</actions>"
+             L"</toast>";
 
       Microsoft::WRL::ComPtr<ABI::Windows::Data::Xml::Dom::IXmlDocumentIO> xmlDocIO;
       hr = xmlDoc.As(&xmlDocIO);
@@ -1127,7 +1276,10 @@ namespace twilio_voice
                 hr = toastNotifier->Show(toast.Get());
                 if (SUCCEEDED(hr))
                 {
-                  activeNotifications[callSid] = toast;
+                  NotificationInfo info;
+                  info.notification = toast;
+                  info.isIncomingCall = isIncomingCall;
+                  activeNotifications[callSid] = info;
                 }
                 else
                 {
@@ -1153,14 +1305,14 @@ namespace twilio_voice
     }
   }
 
-  void TVNotificationManager::hideNotification(const std::string &callSid)
+  void TVNotificationManager::hideNotification(const std::string &callSid, bool isIncomingCall)
   {
     if (toastNotifier)
     {
       auto it = activeNotifications.find(callSid);
-      if (it != activeNotifications.end())
+      if (it != activeNotifications.end() && it->second.isIncomingCall == isIncomingCall)
       {
-        toastNotifier->Hide(it->second.Get());
+        toastNotifier->Hide(it->second.notification.Get());
         activeNotifications.erase(it);
       }
     }
@@ -1170,9 +1322,9 @@ namespace twilio_voice
   {
     if (toastNotifier)
     {
-      for (const auto &[callSid, notification] : activeNotifications)
+      for (const auto &[callSid, info] : activeNotifications)
       {
-        toastNotifier->Hide(notification.Get());
+        toastNotifier->Hide(info.notification.Get());
       }
       activeNotifications.clear();
     }
@@ -1217,6 +1369,36 @@ namespace twilio_voice
       if (TVNotificationManager::webview_)
       {
         TwilioVoicePlugin::HangUpCall(TVNotificationManager::webview_, nullptr);
+      }
+    }
+    else if (action == L"call")
+    {
+      if (TVNotificationManager::webview_)
+      {
+        // Extract from and to from the notification arguments
+        std::wstring args = TVNotificationManager::getInstance().getLastNotificationArgs();
+        size_t fromPos = args.find(L"from:");
+        size_t toPos = args.find(L"to:");
+        if (fromPos != std::wstring::npos && toPos != std::wstring::npos)
+        {
+          std::wstring wfrom = args.substr(fromPos + 5, args.find(L"|", fromPos) - fromPos - 5);
+          std::wstring wto = args.substr(toPos + 3, args.find(L"|", toPos) - toPos - 3);
+          
+          // Convert wide strings to UTF-8 strings
+          int fromLength = WideCharToMultiByte(CP_UTF8, 0, wfrom.c_str(), -1, nullptr, 0, nullptr, nullptr);
+          int toLength = WideCharToMultiByte(CP_UTF8, 0, wto.c_str(), -1, nullptr, 0, nullptr, nullptr);
+          
+          if (fromLength > 0 && toLength > 0)
+          {
+            std::string from(fromLength - 1, '\0');
+            std::string to(toLength - 1, '\0');
+            
+            WideCharToMultiByte(CP_UTF8, 0, wfrom.c_str(), -1, &from[0], fromLength, nullptr, nullptr);
+            WideCharToMultiByte(CP_UTF8, 0, wto.c_str(), -1, &to[0], toLength, nullptr, nullptr);
+            
+            TwilioVoicePlugin::MakeCall(TVNotificationManager::webview_, from, to, nullptr);
+          }
+        }
       }
     }
     else
@@ -1339,6 +1521,11 @@ namespace twilio_voice
         comRegistrationCookie = 0;
       }
     }
+  }
+
+  std::wstring TVNotificationManager::getLastNotificationArgs() const
+  {
+    return lastNotificationArgs_;
   }
 
 } // namespace twilio_voice

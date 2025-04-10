@@ -30,15 +30,25 @@ class TVNotificationManager {
 public:
     static TVNotificationManager& getInstance();
     void showIncomingCallNotification(const std::string& from, const std::string& callSid);
-    void hideNotification(const std::string& callSid);
+    void showMissedCallNotification(const std::string& from, const std::string& callSid);
+    void hideNotification(const std::string& callSid, bool isIncomingCall);
     void hideAllNotifications();
     static void setWebView(TVWebView* webview) { webview_ = webview; }
     bool hasNotificationPermission();
     bool requestNotificationPermission();
     static bool RegisterCOMServer();
     static void UnregisterCOMServer();
+    std::wstring getLastNotificationArgs() const;
 
 protected:
+    struct NotificationInfo {
+        Microsoft::WRL::ComPtr<ABI::Windows::UI::Notifications::IToastNotification> notification;
+        bool isIncomingCall;
+    };
+    std::map<std::string, NotificationInfo> activeNotifications;
+    Microsoft::WRL::ComPtr<ABI::Windows::UI::Notifications::IToastNotifier> toastNotifier;
+    Microsoft::WRL::ComPtr<ABI::Windows::UI::Notifications::IToastNotificationManagerStatics> toastManager;
+    std::wstring lastNotificationArgs_;
     static TVWebView* webview_;
     static DWORD comRegistrationCookie;
 
@@ -46,13 +56,9 @@ private:
     TVNotificationManager();
     ~TVNotificationManager() = default;
 
-    void ShowNotificationInternal(const std::string& from, const std::string& callSid);
+    void ShowNotificationInternal(const std::string& from, const std::string& callSid, bool isIncomingCall);
     bool InitializeNotificationSystem();
 
-    Microsoft::WRL::ComPtr<ABI::Windows::UI::Notifications::IToastNotificationManagerStatics> toastManager;
-    Microsoft::WRL::ComPtr<ABI::Windows::UI::Notifications::IToastNotifier> toastNotifier;
-    std::map<std::string, Microsoft::WRL::ComPtr<ABI::Windows::UI::Notifications::IToastNotification>> activeNotifications;
-    
     friend class TVNotificationActivationCallback;
 };
 
@@ -84,6 +90,7 @@ class TwilioVoicePlugin : public flutter::Plugin {
   // Static methods for call handling
   static void AnswerCall(TVWebView* webview, std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result);
   static void HangUpCall(TVWebView* webview, std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result);
+  static void MakeCall(TVWebView *webview, const std::string &from, const std::string &to, std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result);
 
  private:
   std::unique_ptr<TVWebView> webview_;
