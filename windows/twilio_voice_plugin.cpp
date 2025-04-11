@@ -134,11 +134,8 @@ namespace twilio_voice
     GetModuleFileNameW(NULL, module_path, MAX_PATH);
     std::wstring path(module_path);
     path = path.substr(0, path.find_last_of(L"\\/"));
-    path = path.substr(0, path.find_last_of(L"\\/"));
-    std::wstring assets_path = path + L"\\Debug\\assets";
-    std::wstring html_path = assets_path + L"\\index.html";
         
-    webview_->loadFile(html_path, [this]() {
+    webview_->loadFile( path + L"\\assets\\index.html", [this]() {
       webview_->evaluateJavaScript(
         L"(() => {"
         L"    if (window.device) {"
@@ -914,59 +911,61 @@ namespace twilio_voice
                            L"  }"
                            L"  const params = {"
                            L"    params: {"
-                           L"      To: '" + wto + L"',"
-                           L"      From: '" + wfrom + L"'"
-                           L"    },"
-                           L"    codecPreferences: ['opus', 'pcmu']"
-                           L"  };"
-                           L"  window.connection = await window.device.connect(params);"
-                           L"  if (!window.connection) {"
-                           L"    throw new Error('Failed to create connection - connection is null');"
-                           L"  }"
-                           L"  window.connection.on('accept', () => {"
-                           L"    window.chrome.webview.postMessage({"
-                           L"      type: 'call_event',"
-                           L"      event: 'accept'"
-                           L"    });"
-                           L"  });"
-                           L"  window.connection.on('disconnect', () => {"
-                           L"    window.chrome.webview.postMessage({"
-                           L"      type: 'call_event',"
-                           L"      event: 'disconnected'"
-                           L"    });"
-                           L"  });"
-                           L"  window.connection.on('error', (error) => {"
-                           L"    window.chrome.webview.postMessage({"
-                           L"      type: 'call_event',"
-                           L"      event: 'error',"
-                           L"      error: error.message"
-                           L"    });"
-                           L"  });"
-                           L"  window.connection.on('reject', () => {"
-                           L"    window.chrome.webview.postMessage({"
-                           L"      type: 'call_event',"
-                           L"      event: 'reject'"
-                           L"    });"
-                           L"  });"
-                           L"  window.connection.on('cancel', () => {"
-                           L"    window.chrome.webview.postMessage({"
-                           L"      type: 'call_event',"
-                           L"      event: 'cancel',"
-                           L"      from: window.connection.parameters.From,"
-                           L"      to: window.connection.parameters.To,"
-                           L"      callSid: window.connection.parameters.CallSid"
-                           L"    });"
-                           L"  });"
-                           L"  return '';"
-                           L"} catch (error) {"
-                           L"  window.chrome.webview.postMessage({"
-                           L"    type: 'call_event',"
-                           L"    event: 'error',"
-                           L"    error: error.message"
-                           L"  });"
-                           L"  throw error;"
-                           L"}"
-                           L"})()";
+                           L"      To: '" +
+                           wto + L"',"
+                                 L"      From: '" +
+                           wfrom + L"'"
+                                   L"    },"
+                                   L"    codecPreferences: ['opus', 'pcmu']"
+                                   L"  };"
+                                   L"  window.connection = await window.device.connect(params);"
+                                   L"  if (!window.connection) {"
+                                   L"    throw new Error('Failed to create connection - connection is null');"
+                                   L"  }"
+                                   L"  window.connection.on('accept', () => {"
+                                   L"    window.chrome.webview.postMessage({"
+                                   L"      type: 'call_event',"
+                                   L"      event: 'accept'"
+                                   L"    });"
+                                   L"  });"
+                                   L"  window.connection.on('disconnect', () => {"
+                                   L"    window.chrome.webview.postMessage({"
+                                   L"      type: 'call_event',"
+                                   L"      event: 'disconnected'"
+                                   L"    });"
+                                   L"  });"
+                                   L"  window.connection.on('error', (error) => {"
+                                   L"    window.chrome.webview.postMessage({"
+                                   L"      type: 'call_event',"
+                                   L"      event: 'error',"
+                                   L"      error: error.message"
+                                   L"    });"
+                                   L"  });"
+                                   L"  window.connection.on('reject', () => {"
+                                   L"    window.chrome.webview.postMessage({"
+                                   L"      type: 'call_event',"
+                                   L"      event: 'reject'"
+                                   L"    });"
+                                   L"  });"
+                                   L"  window.connection.on('cancel', () => {"
+                                   L"    window.chrome.webview.postMessage({"
+                                   L"      type: 'call_event',"
+                                   L"      event: 'cancel',"
+                                   L"      from: window.connection.parameters.From,"
+                                   L"      to: window.connection.parameters.To,"
+                                   L"      callSid: window.connection.parameters.CallSid"
+                                   L"    });"
+                                   L"  });"
+                                   L"  return '';"
+                                   L"} catch (error) {"
+                                   L"  window.chrome.webview.postMessage({"
+                                   L"    type: 'call_event',"
+                                   L"    event: 'error',"
+                                   L"    error: error.message"
+                                   L"  });"
+                                   L"  throw error;"
+                                   L"}"
+                                   L"})()";
 
     if (result)
     {
@@ -1218,16 +1217,19 @@ namespace twilio_voice
       std::wstring title = isIncomingCall ? L"Incoming Call" : L"Missed Call";
       std::wstring scenario = isIncomingCall ? L" scenario='alarm' silent='true'" : L"";
       std::wstring xml = L"<toast" + scenario + L">"
-                         L"<visual><binding template='ToastGeneric'>"
-                         L"<text>" + title + L"</text>"
-                         L"<text>" + wFrom + L"</text>"
-                         L"</binding></visual>"
-                         L"<actions>";
+                                                L"<visual><binding template='ToastGeneric'>"
+                                                L"<text>" +
+                         title + L"</text>"
+                                 L"<text>" +
+                         wFrom + L"</text>"
+                                 L"</binding></visual>"
+                                 L"<actions>";
 
       if (isIncomingCall)
       {
         xml += L"<action content='Accept' arguments='accept:" + wCallSid + L"' activationType='foreground'/>"
-               L"<action content='Reject' arguments='reject:" + wCallSid + L"' activationType='foreground'/>";
+                                                                           L"<action content='Reject' arguments='reject:" +
+               wCallSid + L"' activationType='foreground'/>";
       }
       else
       {
@@ -1383,19 +1385,19 @@ namespace twilio_voice
         {
           std::wstring wfrom = args.substr(fromPos + 5, args.find(L"|", fromPos) - fromPos - 5);
           std::wstring wto = args.substr(toPos + 3, args.find(L"|", toPos) - toPos - 3);
-          
+
           // Convert wide strings to UTF-8 strings
           int fromLength = WideCharToMultiByte(CP_UTF8, 0, wfrom.c_str(), -1, nullptr, 0, nullptr, nullptr);
           int toLength = WideCharToMultiByte(CP_UTF8, 0, wto.c_str(), -1, nullptr, 0, nullptr, nullptr);
-          
+
           if (fromLength > 0 && toLength > 0)
           {
             std::string from(fromLength - 1, '\0');
             std::string to(toLength - 1, '\0');
-            
+
             WideCharToMultiByte(CP_UTF8, 0, wfrom.c_str(), -1, &from[0], fromLength, nullptr, nullptr);
             WideCharToMultiByte(CP_UTF8, 0, wto.c_str(), -1, &to[0], toLength, nullptr, nullptr);
-            
+
             TwilioVoicePlugin::MakeCall(TVNotificationManager::webview_, from, to, nullptr);
           }
         }
