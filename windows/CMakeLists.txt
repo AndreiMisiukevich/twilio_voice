@@ -22,13 +22,8 @@ list(APPEND PLUGIN_SOURCES
   "twilio_voice_plugin.h"
   "utils/tv_logger.cpp"
   "utils/tv_logger.h"
-  "js_interop/call/tv_call.cpp"
-  "js_interop/call/tv_call.h"
-  "js_interop/call/tv_call_delegate.h"
   "webview/tv_webview.cpp"
   "webview/tv_webview.h"
-  "js_interop/js_object.cpp"
-  "js_interop/js_object.h"
 )
 
 # Define the plugin library target. Its name must not be changed (see comment

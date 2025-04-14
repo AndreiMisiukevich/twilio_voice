@@ -43,7 +43,7 @@ void TVWebView::initialize(std::function<void()> completionHandler) {
                                         return S_OK;
                                     }
                                 ).Get(),
-                                nullptr
+                                &permissionRequestedToken_
                             );
                             
                             completionHandler();
@@ -81,9 +81,7 @@ void TVWebView::evaluateJavaScript(const std::wstring& javascript,
                     utf8Result.pop_back();
                     
                     TV_LOG_DEBUG("JavaScript execution result: " + utf8Result);
-                                  char* resultBuffer = new char[utf8Result.length() + 1];
-                        strcpy_s(resultBuffer, utf8Result.length() + 1, utf8Result.c_str());
-                        completionHandler(nullptr, resultBuffer);
+                    completionHandler(nullptr, utf8Result);
                 } else {
                     completionHandler(nullptr, "Failed to convert result to UTF-8");
                 }
@@ -91,10 +89,45 @@ void TVWebView::evaluateJavaScript(const std::wstring& javascript,
             }).Get());
 }
 
-TVWebView::~TVWebView() {
+void TVWebView::cleanup() {
+    std::wstring cleanupScript = L"(() => {"
+        L"  try {"
+        L"    if (window.connection) {"
+        L"      window.connection.disconnect();"
+        L"      window.connection = null;"
+        L"    }"
+        L"    if (window.device) {"
+        L"      window.device.removeAllListeners('incoming');"
+        L"      window.device.removeAllListeners('connect');"
+        L"      window.device.removeAllListeners('disconnect');"
+        L"      window.device.removeAllListeners('error');"
+        L"      window.device.removeAllListeners('offline');"
+        L"      window.device.removeAllListeners('ready');"
+        L"      window.device.unregister();"
+        L"      window.device = null;"
+        L"    }"
+        L"    return true;"
+        L"  } catch (error) {"
+        L"    return false;"
+        L"  }"
+        L"})()";
+    
+    webview_->ExecuteScript(cleanupScript.c_str(), nullptr);
+    webview_->remove_NavigationCompleted(navigationCompletedToken_);
+    webview_->remove_PermissionRequested(permissionRequestedToken_);
+
+    // Release resources in reverse order of initialization
+    settings_.Reset();
+    webview_.Reset();
+    
     if (controller_) {
         controller_->Close();
+        controller_.Reset();
     }
+}
+
+TVWebView::~TVWebView() {
+    cleanup();
 }
 
 void TVWebView::loadHtmlString(const std::wstring& html) {
@@ -105,7 +138,10 @@ void TVWebView::loadHtmlString(const std::wstring& html) {
 
 void TVWebView::loadFile(const std::wstring& filePath, std::function<void()> completionHandler) {
     if (webview_) {
-        // Add navigation completed handler
+        // Remove any existing navigation completed handler
+        webview_->remove_NavigationCompleted(navigationCompletedToken_);
+        
+        // Add new navigation completed handler
         webview_->add_NavigationCompleted(
             Microsoft::WRL::Callback<ICoreWebView2NavigationCompletedEventHandler>(
                 [completionHandler](ICoreWebView2* sender, ICoreWebView2NavigationCompletedEventArgs* args) -> HRESULT {
@@ -114,7 +150,7 @@ void TVWebView::loadFile(const std::wstring& filePath, std::function<void()> com
                     }
                     return S_OK;
                 }).Get(),
-            nullptr);
+            &navigationCompletedToken_);
         
         // Navigate to the file
         webview_->Navigate(filePath.c_str());

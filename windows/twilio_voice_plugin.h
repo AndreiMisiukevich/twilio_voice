@@ -11,7 +11,6 @@
 #include <flutter/event_stream_handler_functions.h>
 #include <flutter/plugin_registrar_windows.h>
 #include "webview/tv_webview.h"
-#include "js_interop/call/tv_call.h"
 #include <memory>
 #include <map>
 #include <notificationactivationcallback.h>
@@ -101,7 +100,7 @@ class TwilioVoicePlugin : public flutter::Plugin {
   flutter::EventSink<flutter::EncodableValue>* event_sink_ = nullptr;
   
   void InitializeWebView();
-  void SendEventToFlutter(const std::string& event);
+  void SendEventToFlutter(const std::string &event);
 
   // Mic permission handling
   void CheckMicrophonePermission(std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result = nullptr);
@@ -114,6 +113,9 @@ class TwilioVoicePlugin : public flutter::Plugin {
   void HandleMethodCall(
       const flutter::MethodCall<flutter::EncodableValue> &method_call,
       std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result);
+
+  static void UnsubscribeDeviceEventHandlers(TVWebView *webview);
+  static void UnsubscribeConnectionEventHandlers(TVWebView *webview);
 };
 
 }  // namespace twilio_voice

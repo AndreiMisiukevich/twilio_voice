@@ -14,8 +14,6 @@
 #include <propvarutil.h>
 
 #include "twilio_voice_plugin.h"
-#include "js_interop/call/tv_error.h"
-#include "js_interop/call/tv_call_status.h"
 #include "utils/tv_logger.h"
 
 #include <flutter/method_channel.h>
@@ -147,7 +145,7 @@ namespace twilio_voice
         L"      window.device.removeAllListeners('ready');"
         L"    }"
         L"})()",
-        [](void*, std::string error) {});
+        [](void*, std::string result) {});
 
       webview_->getWebView()->add_WebMessageReceived(
         Microsoft::WRL::Callback<ICoreWebView2WebMessageReceivedEventHandler>(
@@ -164,7 +162,7 @@ namespace twilio_voice
                     if (jsonStart != std::string::npos) {
                         utf8Message = utf8Message.substr(jsonStart);
                     }
-                    
+                    TV_LOG_DEBUG("Received message: " + utf8Message);
                     size_t jsonEnd = utf8Message.find_last_of('}');
                     if (jsonEnd != std::string::npos) {
                         utf8Message = utf8Message.substr(0, jsonEnd + 1);
@@ -212,6 +210,8 @@ namespace twilio_voice
                         SendEventToFlutter("Answer|" + from + "|" + to);
                       } else if (eventValue == "disconnected") {
                         SendEventToFlutter("Call Ended");
+                      } else if (eventValue == "reject") {
+                        SendEventToFlutter("LOG|Call Rejected");
                       } else if (eventValue == "error") {
                         std::string error = json.value("error", "Unknown error");
                         SendEventToFlutter("Error|" + error);
@@ -235,9 +235,16 @@ namespace twilio_voice
 
   TwilioVoicePlugin::~TwilioVoicePlugin()
   {
+    if (event_sink_)
+    {
+      delete event_sink_;
+      event_sink_ = nullptr;
+    }
+
     if (webview_)
     {
-      webview_.reset(); // This will call the destructor of TVWebView
+      webview_->cleanup();
+      webview_.reset();
     }
     TVNotificationManager::UnregisterCOMServer();
   }
@@ -353,11 +360,11 @@ namespace twilio_voice
 
       webview_->evaluateJavaScript(
           setup_script,
-          [shared_result](void *, std::string error)
+          [shared_result](void *, std::string result)
           {
-            if (error == "false")
+            if (result == "false")
             {
-              (*shared_result)->Error("Setup Failed", error);
+              (*shared_result)->Error("Setup Failed", result);
             }
             else
             {
@@ -441,15 +448,15 @@ namespace twilio_voice
 
       webview_->evaluateJavaScript(
           std::wstring(L"window.connection.mute(") + (muted ? L"true" : L"false") + L"); window.connection.isMuted()",
-          [shared_result, this](void *, std::string response)
+          [shared_result, this](void *, std::string result)
           {
-            if (response == "null")
+            if (result == "null")
             {
               (*shared_result)->Success(nullptr);
             }
             else
             {
-              bool isMuted = response == "true";
+              bool isMuted = result == "true";
               (*shared_result)->Success(isMuted);
               SendEventToFlutter(isMuted ? "Mute" : "Unmute");
             }
@@ -462,15 +469,15 @@ namespace twilio_voice
 
       webview_->evaluateJavaScript(
           L"window.connection.isMuted()",
-          [shared_result](void *, std::string response)
+          [shared_result](void *, std::string result)
           {
-            if (response == "null")
+            if (result == "null")
             {
               (*shared_result)->Success(nullptr);
             }
             else
             {
-              (*shared_result)->Success(response == "true");
+              (*shared_result)->Success(result == "true");
             }
           });
     }
@@ -590,16 +597,16 @@ namespace twilio_voice
 
       webview_->evaluateJavaScript(
           unregister_script,
-          [shared_result](void *, std::string response)
+          [shared_result](void *, std::string result)
           {
-            if (response == "true")
+            if (result == "true")
             {
               (*shared_result)->Success(true);
             }
             else
             {
-              TV_LOG_ERROR("Failed to unregister from Twilio: " + response);
-              (*shared_result)->Error("UNREGISTER_FAILED", response);
+              TV_LOG_ERROR("Failed to unregister from Twilio: " + result);
+              (*shared_result)->Error("UNREGISTER_FAILED", result);
             }
           });
     }
@@ -628,11 +635,11 @@ namespace twilio_voice
 
       webview_->evaluateJavaScript(
           checkPermissionScript,
-          [shared_result](void *, std::string response)
+          [shared_result](void *, std::string result)
           {
             try
             {
-              bool hasPermission = response == "true";
+              bool hasPermission = result == "true";
               (*shared_result)->Success(hasPermission);
             }
             catch (const std::exception &e)
@@ -646,11 +653,11 @@ namespace twilio_voice
     {
       webview_->evaluateJavaScript(
           checkPermissionScript,
-          [](void *, std::string response)
+          [](void *, std::string result)
           {
             try
             {
-              bool hasPermission = response == "true";
+              bool hasPermission = result == "true";
               TV_LOG_DEBUG("Microphone permission status: " + std::string(hasPermission ? "granted" : "denied"));
             }
             catch (const std::exception &e)
@@ -681,14 +688,13 @@ namespace twilio_voice
 
   void TwilioVoicePlugin::AnswerCall(TVWebView *webview, std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result)
   {
-    TV_LOG_DEBUG("Executing answer command");
-
     if (webview)
     {
       webview->evaluateJavaScript(
           L"window.connection ? window.connection.parameters.CallSid : ''",
           [](void *, std::string callSid)
           {
+            TV_LOG_DEBUG("AnswerCall CallSid: " + callSid);
             if (!callSid.empty() && callSid != "\"\"")
             {
               TVNotificationManager::getInstance().hideNotification(callSid, true);
@@ -724,16 +730,16 @@ namespace twilio_voice
 
       webview->evaluateJavaScript(
           answer_script,
-          [shared_result](void *, std::string response)
+          [shared_result](void *, std::string result)
           {
-            if (response == "true")
+            if (result == "true")
             {
               if (*shared_result)
               {
                 (*shared_result)->Success(true);
               }
             }
-            else if (response == "false")
+            else if (result == "false")
             {
               TV_LOG_ERROR("No active connection to answer");
               if (*shared_result)
@@ -743,10 +749,10 @@ namespace twilio_voice
             }
             else
             {
-              TV_LOG_ERROR("Answer error: " + response);
+              TV_LOG_ERROR("Answer error: " + result);
               if (*shared_result)
               {
-                (*shared_result)->Error("ANSWER_FAILED", "Failed to answer call: " + response);
+                (*shared_result)->Error("ANSWER_FAILED", "Failed to answer call: " + result);
               }
             }
           });
@@ -755,19 +761,19 @@ namespace twilio_voice
     {
       webview->evaluateJavaScript(
           answer_script,
-          [](void *, std::string response)
+          [](void *, std::string result)
           {
-            if (response == "true")
+            if (result == "true")
             {
               TV_LOG_DEBUG("Successfully answered call from notification");
             }
-            else if (response == "false")
+            else if (result == "false")
             {
               TV_LOG_ERROR("No active connection to answer from notification");
             }
             else
             {
-              TV_LOG_ERROR("Answer error from notification: " + response);
+              TV_LOG_ERROR("Answer error from notification: " + result);
             }
           });
     }
@@ -834,16 +840,16 @@ namespace twilio_voice
 
       webview->evaluateJavaScript(
           disconnect_script,
-          [shared_result](void *, std::string response)
+          [shared_result](void *, std::string result)
           {
-            if (response == "true")
+            if (result == "true")
             {
               if (*shared_result)
               {
                 (*shared_result)->Success(true);
               }
             }
-            else if (response == "false")
+            else if (result == "false")
             {
               if (*shared_result)
               {
@@ -852,10 +858,10 @@ namespace twilio_voice
             }
             else
             {
-              TV_LOG_ERROR("Hangup error: " + response);
+              TV_LOG_ERROR("Hangup error: " + result);
               if (*shared_result)
               {
-                (*shared_result)->Error("HANGUP_FAILED", "Failed to hang up call: " + response);
+                (*shared_result)->Error("HANGUP_FAILED", "Failed to hang up call: " + result);
               }
             }
           });
@@ -864,18 +870,19 @@ namespace twilio_voice
     {
       webview->evaluateJavaScript(
           disconnect_script,
-          [](void *, std::string response)
+          [webview](void *, std::string result)
           {
-            if (response == "true")
+            if (result == "true")
             {
+              UnsubscribeConnectionEventHandlers(webview);
             }
-            else if (response == "false")
+            else if (result == "false")
             {
               TV_LOG_ERROR("No active connection to hang up from notification");
             }
             else
             {
-              TV_LOG_ERROR("Hangup error from notification: " + response);
+              TV_LOG_ERROR("Hangup error from notification: " + result);
             }
           });
     }
@@ -974,11 +981,11 @@ namespace twilio_voice
 
       webview->evaluateJavaScript(
           js_code,
-          [shared_result](void *, std::string error)
+          [shared_result](void *, std::string result)
           {
-            if (error != "{}")
+            if (result != "{}")
             {
-              (*shared_result)->Error("CALL_FAILED", error);
+              (*shared_result)->Error("CALL_FAILED", result);
             }
             else
             {
@@ -990,11 +997,11 @@ namespace twilio_voice
     {
       webview->evaluateJavaScript(
           js_code,
-          [](void *, std::string response)
+          [](void *, std::string result)
           {
-            if (response != "{}")
+            if (result != "{}")
             {
-              TV_LOG_ERROR("Call error from notification: " + response);
+              TV_LOG_ERROR("Call error from notification: " + result);
             }
           });
     }
@@ -1528,6 +1535,62 @@ namespace twilio_voice
   std::wstring TVNotificationManager::getLastNotificationArgs() const
   {
     return lastNotificationArgs_;
+  }
+
+  void TwilioVoicePlugin::UnsubscribeDeviceEventHandlers(TVWebView *webview)
+  {
+    if (!webview)
+    {
+      return;
+    }
+
+    webview->evaluateJavaScript(
+        L"(() => {"
+        L"  try {"
+        L"    if (window.device) {"
+        L"      window.device.removeAllListeners('incoming');"
+        L"      window.device.removeAllListeners('connect');"
+        L"      window.device.removeAllListeners('disconnect');"
+        L"      window.device.removeAllListeners('error');"
+        L"      window.device.removeAllListeners('offline');"
+        L"      window.device.removeAllListeners('ready');"
+        L"      window.device.unregister();"
+        L"      window.device = null;"
+        L"      return true;"
+        L"    }"
+        L"    return false;"
+        L"  } catch (error) {"
+        L"    return error.message;"
+        L"  }"
+        L"})()",
+        [](void *, std::string result) {});
+  }
+
+  void TwilioVoicePlugin::UnsubscribeConnectionEventHandlers(TVWebView *webview)
+  {
+    if (!webview)
+    {
+      return;
+    }
+
+    webview->evaluateJavaScript(
+        L"(() => {"
+        L"  try {"
+        L"    if (window.connection) {"
+        L"      window.connection.removeAllListeners('accept');"
+        L"      window.connection.removeAllListeners('disconnect');"
+        L"      window.connection.removeAllListeners('error');"
+        L"      window.connection.removeAllListeners('reject');"
+        L"      window.connection.removeAllListeners('cancel');"
+        L"      window.connection = null;"
+        L"      return true;"
+        L"    }"
+        L"    return false;"
+        L"  } catch (error) {"
+        L"    return error.message;"
+        L"  }"
+        L"})()",
+        [](void *, std::string result) {});
   }
 
 } // namespace twilio_voice
