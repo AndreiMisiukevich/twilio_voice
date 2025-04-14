@@ -162,7 +162,6 @@ namespace twilio_voice
                     if (jsonStart != std::string::npos) {
                         utf8Message = utf8Message.substr(jsonStart);
                     }
-                    TV_LOG_DEBUG("Received message: " + utf8Message);
                     size_t jsonEnd = utf8Message.find_last_of('}');
                     if (jsonEnd != std::string::npos) {
                         utf8Message = utf8Message.substr(0, jsonEnd + 1);
@@ -694,7 +693,6 @@ namespace twilio_voice
           L"window.connection ? window.connection.parameters.CallSid : ''",
           [](void *, std::string callSid)
           {
-            TV_LOG_DEBUG("AnswerCall CallSid: " + callSid);
             if (!callSid.empty() && callSid != "\"\"")
             {
               TVNotificationManager::getInstance().hideNotification(callSid, true);
@@ -765,7 +763,6 @@ namespace twilio_voice
           {
             if (result == "true")
             {
-              TV_LOG_DEBUG("Successfully answered call from notification");
             }
             else if (result == "false")
             {
@@ -781,22 +778,14 @@ namespace twilio_voice
 
   void TwilioVoicePlugin::HangUpCall(TVWebView *webview, std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result)
   {
-    TV_LOG_DEBUG("Executing hangUp command");
-
     if (webview)
     {
       webview->evaluateJavaScript(
           L"window.connection ? window.connection.parameters.CallSid : ''",
           [](void *, std::string callSid)
           {
-            TV_LOG_DEBUG("HangUp CallSid: " + callSid);
             if (!callSid.empty() && callSid != "\"\"")
             {
-              if (callSid.front() == '"' && callSid.back() == '"')
-              {
-                callSid = callSid.substr(1, callSid.length() - 2);
-              }
-              TV_LOG_DEBUG("HangUp CallSid hideNotification: " + callSid);
               TVNotificationManager::getInstance().hideNotification(callSid, true);
             }
           });
@@ -890,8 +879,6 @@ namespace twilio_voice
 
   void TwilioVoicePlugin::MakeCall(TVWebView *webview, const std::string &from, const std::string &to, std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result)
   {
-    TV_LOG_DEBUG("Executing makeCall command");
-
     if (!webview)
     {
       if (result)
@@ -1318,7 +1305,13 @@ namespace twilio_voice
   {
     if (toastNotifier)
     {
-      auto it = activeNotifications.find(callSid);
+      std::string processedCallSid = callSid;
+      // Remove quotes from callSid if present
+      if (processedCallSid.front() == '"' && processedCallSid.back() == '"')
+      {
+        processedCallSid = processedCallSid.substr(1, processedCallSid.length() - 2);
+      }
+      auto it = activeNotifications.find(processedCallSid);
       if (it != activeNotifications.end() && it->second.isIncomingCall == isIncomingCall)
       {
         toastNotifier->Hide(it->second.notification.Get());
