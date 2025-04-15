@@ -8,6 +8,8 @@ import android.content.DialogInterface
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.content.res.Resources
+import android.view.ContextThemeWrapper
 import android.os.Build
 import android.os.Bundle
 import android.telecom.CallAudioState
@@ -1593,7 +1595,8 @@ class TwilioVoicePlugin : FlutterPlugin, MethodCallHandler, EventChannel.StreamH
         onClickListener: DialogInterface.OnClickListener,
         onDismissListener: DialogInterface.OnDismissListener
     ) {
-        val builder = AlertDialog.Builder(context)
+    val themedContext = ContextThemeWrapper(context, R.style.AppDialogTheme)
+    val builder = AlertDialog.Builder(themedContext)
         builder.setTitle(title)
         builder.setMessage(message)
         builder.setPositiveButton(R.string.proceed, onClickListener)
