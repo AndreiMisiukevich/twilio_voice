@@ -232,20 +232,11 @@ public class SwiftTwilioVoicePlugin: NSObject, FlutterPlugin,  FlutterStreamHand
             }
         }
         else if flutterCall.method == "isHolding" {
-            // guard call not nil
-            guard let call = self.call else {
-                return;
+            if(self.call != nil) {
+                result(self.call!.isOnHold);
+            } else {
+                result(false);
             }
-            
-            // toggle state current state
-            let isOnHold = call.isOnHold;
-            call.isOnHold = !isOnHold;
-            
-            // guard event sink not nil & post update
-            guard let eventSink = eventSink else {
-                return
-            }
-            eventSink(!isOnHold ? "Hold" : "Unhold")
         }
         else if flutterCall.method == "answer" {
             // nuthin
@@ -1023,9 +1014,16 @@ public class SwiftTwilioVoicePlugin: NSObject, FlutterPlugin,  FlutterStreamHand
         guard let eventSink = eventSink else {
             return
         }
-        DispatchQueue.main.async {
-            eventSink(event)
+
+
+        guard Thread.isMainThread else {
+            DispatchQueue.main.sync {
+                eventSink(event)
+            }
+            return
         }
+
+        eventSink(event)
     }
 
     public func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
