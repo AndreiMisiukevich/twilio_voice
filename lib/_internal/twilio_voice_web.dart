@@ -59,7 +59,9 @@ class TwilioSW {
   void _setupServiceWorker() {
     _webServiceWorkerContainerDelegate = html.window.navigator.serviceWorker;
     if (_webServiceWorkerContainerDelegate == null) {
-      printDebug("No service worker found, check if you've registered the `twilio-sw.js` service worker and if the script is present.");
+      printDebug(
+        "No service worker found, check if you've registered the `twilio-sw.js` service worker and if the script is present.",
+      );
       return;
     }
 
@@ -114,14 +116,14 @@ class NotificationService {
     required String title,
     required String tag,
     String? body,
-    String? imageUrl,
+    String? icon,
     bool? requiresInteraction,
     List<Map<String, String>>? actions,
   }) async {
     // request background permissions
-    if(!await hasPermission()) {
+    if (!await hasPermission()) {
       bool result = await requestPermission();
-      if(!result) {
+      if (!result) {
         printDebug("Cannot show notification with permission.");
         return;
       }
@@ -134,13 +136,13 @@ class NotificationService {
         'options': {
           'tag': tag,
           'body': body,
-          'image': imageUrl,
+          'icon': icon,
           // TODO(cybex-dev): Service worker events i.e. 'notificationclick' & 'notificationclose' are (on Windows) intercepted before reaching twilio-sw, thus do not respond to events.
           'actions': actions,
           // TODO(cybex-dev) Hide requires interaction until we can handle events in the service worker (see above)
           'requireInteraction': requiresInteraction,
-        }
-      }
+        },
+      },
     };
     // See above, actions are removed temporarily on Windows notifications since they aren't triggered/received by Service Worker.
     // if (kIsWeb && defaultTargetPlatform == TargetPlatform.windows) {
@@ -329,9 +331,11 @@ class TwilioVoiceWeb extends MethodChannelTwilioVoice {
   Future<bool?> requestMicAccess() async {
     Logger.logLocalEvent("requesting mic permission");
     try {
-      final isSafariOrFirefox = RegExp(r'^((?!chrome|android).)*safari|firefox', caseSensitive: false)
-          .hasMatch(_webNavigatorDelegate.userAgent);
-      
+      final isSafariOrFirefox = RegExp(
+        r'^((?!chrome|android).)*safari|firefox',
+        caseSensitive: false,
+      ).hasMatch(_webNavigatorDelegate.userAgent);
+
       if (isSafariOrFirefox && _webPermissionsDelegate != null) {
         try {
           final result = await _webPermissionsDelegate!.request({"name": "microphone"});
@@ -341,12 +345,13 @@ class TwilioVoiceWeb extends MethodChannelTwilioVoice {
           printDebug(e);
         }
       }
-      
+
       // Default approach for all browsers (and fallback for Safari & Firefox)
-      /// This dirty hack to get media stream. Request (to show permissions popup on Chrome 
+      /// This dirty hack to get media stream. Request (to show permissions popup on Chrome
       /// and other browsers, then stop the stream to release the permission)
       /// TODO(cybex-dev) - check supported media streams
-      html.MediaStream mediaStream = await _webMediaDevicesDelegate?.getUserMedia({"audio": true}) ?? 
+      html.MediaStream mediaStream =
+          await _webMediaDevicesDelegate?.getUserMedia({"audio": true}) ??
           await _webNavigatorDelegate.getUserMedia(audio: true);
       mediaStream.getTracks().forEach((track) => track.stop());
       return hasMicAccess();
@@ -547,20 +552,10 @@ class TwilioVoiceWeb extends MethodChannelTwilioVoice {
     final params = getCallParams(call);
     final from = params["From"] ?? "";
     final to = params["To"] ?? "";
-    Logger.logLocalEventEntries(
-      ["Incoming", from, to, "Incoming", jsonEncode(params)],
-      prefix: "",
-    );
-    Logger.logLocalEventEntries(
-      ["Ringing", from, to, "Incoming", jsonEncode(params)],
-      prefix: "",
-    );
+    Logger.logLocalEventEntries(["Incoming", from, to, "Incoming", jsonEncode(params)], prefix: "");
+    Logger.logLocalEventEntries(["Ringing", from, to, "Incoming", jsonEncode(params)], prefix: "");
 
     _showIncomingCallNotification(call);
-  }
-
-  String? _resolveImageUrl(Map<String, String> params) {
-    return params["__TWI_CALLER_URL"] ?? params["imageUrl"] ?? params["url"];
   }
 
   void _showIncomingCallNotification(twilio_js.Call call) {
@@ -572,7 +567,7 @@ class TwilioVoiceWeb extends MethodChannelTwilioVoice {
     final title = _resolveCallerName(callParams);
     const body = 'Incoming Call';
     final callSid = callParams["CallSid"] as String;
-    final imageUrl = _resolveImageUrl(callParams);
+    final icon = _resolveCallerIcon(callParams);
     final actions = <Map<String, String>>[
       {'action': 'answer', 'title': 'Accept', 'icon': 'icons/answer/128.png'},
       {'action': 'reject', 'title': 'Reject', 'icon': 'icons/hangup/128.png'},
@@ -587,7 +582,7 @@ class TwilioVoiceWeb extends MethodChannelTwilioVoice {
       title: title,
       tag: callSid,
       body: body,
-      imageUrl: imageUrl,
+      icon: icon,
       actions: actions,
       requiresInteraction: true,
     );
@@ -718,10 +713,7 @@ class Call extends MethodChannelTwilioCall {
       final params = getCallParams(_jsCall!);
       final from = params["From"] ?? "";
       final to = params["To"] ?? "";
-      Logger.logLocalEventEntries(
-        ["Answer", from, to, jsonEncode(params)],
-        prefix: "",
-      );
+      Logger.logLocalEventEntries(["Answer", from, to, jsonEncode(params)], prefix: "");
 
       // notify SW to cancel notification
       final callSid = await getSid();
@@ -786,8 +778,10 @@ class Call extends MethodChannelTwilioCall {
   /// See [twilio_js.Device.connect]
   @override
   Future<bool?> place({required String from, required String to, Map<String, dynamic>? extraOptions}) async {
-    assert(device != null,
-        "Twilio device is null, make sure you have initialized the device first by calling [ setTokens({required String accessToken, String? deviceToken}) ] ");
+    assert(
+      device != null,
+      "Twilio device is null, make sure you have initialized the device first by calling [ setTokens({required String accessToken, String? deviceToken}) ] ",
+    );
     assert(from.isNotEmpty, "'from' cannot be empty");
     assert(to.isNotEmpty, "'to' cannot be empty");
     final options = (extraOptions ?? {});
@@ -796,10 +790,7 @@ class Call extends MethodChannelTwilioCall {
 
     Logger.logLocalEvent("Making new call");
     // handle parameters
-    final params = <String, String>{
-      "From": from,
-      "To": to,
-    };
+    final params = <String, String>{"From": from, "To": to};
     extraOptions?.forEach((key, value) {
       params[key] = value.toString();
     });
@@ -833,8 +824,10 @@ class Call extends MethodChannelTwilioCall {
   /// See [twilio_js.Device.connect]
   @override
   Future<bool?> connect({Map<String, dynamic>? extraOptions}) async {
-    assert(device != null,
-        "Twilio device is null, make sure you have initialized the device first by calling [ setTokens({required String accessToken, String? deviceToken}) ] ");
+    assert(
+      device != null,
+      "Twilio device is null, make sure you have initialized the device first by calling [ setTokens({required String accessToken, String? deviceToken}) ] ",
+    );
 
     Logger.logLocalEvent("Making new call with Connect");
     // handle parameters
@@ -925,10 +918,7 @@ class Call extends MethodChannelTwilioCall {
       final from = params["From"] ?? "";
       final to = params["To"] ?? "";
       final direction = _jsCall!.direction == "INCOMING" ? "Incoming" : "Outgoing";
-      Logger.logLocalEventEntries(
-        ["Ringing", from, to, direction],
-        prefix: "",
-      );
+      Logger.logLocalEventEntries(["Ringing", from, to, direction], prefix: "");
     }
   }
 
@@ -939,12 +929,7 @@ class Call extends MethodChannelTwilioCall {
       final params = getCallParams(call);
       final from = params["From"] ?? "";
       final to = params["To"] ?? "";
-      Logger.logLocalEventEntries([
-        "Answer",
-        from,
-        to,
-        jsonEncode(params),
-      ], prefix: "");
+      Logger.logLocalEventEntries(["Answer", from, to, jsonEncode(params)], prefix: "");
     }
   }
 
@@ -978,20 +963,18 @@ class Call extends MethodChannelTwilioCall {
     Logger.logLocalEvent("Call Ended", prefix: "");
   }
 
-
-
   Future<void> _showMissedCallNotification(twilio_js.Call call) async {
     const action = 'missed';
     final callParams = getCallParams(call);
     // TODO(cybex-dev) resolve from local storage
     final title = _resolveCallerName(callParams);
     const body = 'Missed Call';
-
     final actions = <Map<String, String>>[
       // TODO(cybex-dev) future actions
       // {'action': 'callback', 'title': 'Return Call'},
     ];
     final callSid = callParams["CallSid"] as String;
+    final icon = _resolveCallerIcon(callParams);
 
     // show JS notification using SW
     NotificationService.instance.showNotification(
@@ -999,6 +982,7 @@ class Call extends MethodChannelTwilioCall {
       title: title,
       tag: callSid,
       body: body,
+      icon: icon,
       actions: actions,
       requiresInteraction: true,
     );
@@ -1049,9 +1033,7 @@ class Call extends MethodChannelTwilioCall {
   void _cancelNotification(String callSid) {
     final message = {
       'action': 'cancel',
-      'payload': {
-        'tag': callSid,
-      },
+      'payload': {'tag': callSid},
     };
     TwilioSW.instance.send(message);
   }
@@ -1077,10 +1059,16 @@ String _resolveCallerName(Map<String, String> params) {
   final from = params["From"] ?? "";
   if (from.startsWith("client:")) {
     final clientName = from.substring(7);
-    return _localStorage.getRegisteredClient(clientName) ?? _localStorage.getRegisteredClient("defaultCaller") ?? clientName;
+    return _localStorage.getRegisteredClient(clientName) ??
+        _localStorage.getRegisteredClient("defaultCaller") ??
+        clientName;
   } else {
     return from;
   }
+}
+
+String? _resolveCallerIcon(Map<String, String> params) {
+  return params["__TWI_CALLER_URL"] ?? params["imageUrl"] ?? params["url"];
 }
 
 Map<String, String> getCallParams(twilio_js.Call call) {
