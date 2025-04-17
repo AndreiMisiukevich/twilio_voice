@@ -31,6 +31,8 @@ import 'method_channel/twilio_call_method_channel.dart';
 import 'method_channel/twilio_voice_method_channel.dart';
 import 'utils.dart';
 
+final LocalStorageWeb _localStorage = LocalStorageWeb();
+
 class TwilioSW {
   TwilioSW._() {
     _setupServiceWorker();
@@ -228,8 +230,6 @@ class TwilioVoiceWeb extends MethodChannelTwilioVoice {
     sw._setupServiceWorker();
     sw.onMessageReceived = _handleServiceWorkerMessage;
   }
-
-  final LocalStorageWeb _localStorage = LocalStorageWeb();
 
   twilio_js.Device? device;
 
@@ -557,16 +557,6 @@ class TwilioVoiceWeb extends MethodChannelTwilioVoice {
     );
 
     _showIncomingCallNotification(call);
-  }
-
-  String _resolveCallerName(Map<String, String> params) {
-    final from = params["From"] ?? "";
-    if (from.startsWith("client:")) {
-      final clientName = from.substring(7);
-      return _localStorage.getRegisteredClient(clientName) ?? _localStorage.getRegisteredClient("defaultCaller") ?? clientName;
-    } else {
-      return from;
-    }
   }
 
   String? _resolveImageUrl(Map<String, String> params) {
@@ -994,7 +984,7 @@ class Call extends MethodChannelTwilioCall {
     const action = 'missed';
     final callParams = getCallParams(call);
     // TODO(cybex-dev) resolve from local storage
-    final title = callParams["From"] ?? "";
+    final title = _resolveCallerName(callParams);
     const body = 'Missed Call';
 
     final actions = <Map<String, String>>[
@@ -1076,6 +1066,21 @@ Map<String, String> _getCustomCallParameters(dynamic callParameters) {
     return MapEntry<String, String>(entry.first.toString(), entry.last.toString());
   });
   return Map<String, String>.fromEntries(entries);
+}
+
+String _resolveCallerName(Map<String, String> params) {
+  final callerName = params["__TWI_CALLER_NAME"];
+  if (callerName != null) {
+    return callerName;
+  }
+
+  final from = params["From"] ?? "";
+  if (from.startsWith("client:")) {
+    final clientName = from.substring(7);
+    return _localStorage.getRegisteredClient(clientName) ?? _localStorage.getRegisteredClient("defaultCaller") ?? clientName;
+  } else {
+    return from;
+  }
 }
 
 Map<String, String> getCallParams(twilio_js.Call call) {
