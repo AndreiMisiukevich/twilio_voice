@@ -239,16 +239,7 @@ public class SwiftTwilioVoicePlugin: NSObject, FlutterPlugin,  FlutterStreamHand
             }
         }
         else if flutterCall.method == "answer" {
-            if (self.callInvite != nil) {
-                self.sendPhoneCallEvents(description: "LOG|answer method invoked for call invite", isError: false)
-                performAnswerVoiceCall(uuid: self.callInvite!.uuid) { (success) in
-                    if success {
-                        self.sendPhoneCallEvents(description: "LOG|provider:performAnswerVoiceCall() successful", isError: false)
-                    } else {
-                        self.sendPhoneCallEvents(description: "LOG|provider:performAnswerVoiceCall() failed:", isError: false)
-                    }
-                }
-            }
+            // nuthin
         }
         else if flutterCall.method == "unregister" {
             guard let deviceToken = deviceToken else {
