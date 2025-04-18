@@ -239,7 +239,16 @@ public class SwiftTwilioVoicePlugin: NSObject, FlutterPlugin,  FlutterStreamHand
             }
         }
         else if flutterCall.method == "answer" {
-            // nuthin
+            if (self.callInvite != nil) {
+                self.sendPhoneCallEvents(description: "LOG|answer method invoked for call invite", isError: false)
+                performAnswerVoiceCall(uuid: self.callInvite!.uuid) { (success) in
+                    if success {
+                        self.sendPhoneCallEvents(description: "LOG|provider:performAnswerVoiceCall() successful", isError: false)
+                    } else {
+                        self.sendPhoneCallEvents(description: "LOG|provider:performAnswerVoiceCall() failed:", isError: false)
+                    }
+                }
+            }
         }
         else if flutterCall.method == "unregister" {
             guard let deviceToken = deviceToken else {
@@ -252,13 +261,12 @@ public class SwiftTwilioVoicePlugin: NSObject, FlutterPlugin,  FlutterStreamHand
             }
             
         }else if flutterCall.method == "hangUp"{
-            // Hang up on-going/active call
-            if (self.call != nil) {
+            if (self.callInvite != nil || self.call != nil) {
                 self.sendPhoneCallEvents(description: "LOG|hangUp method invoked", isError: false)
                 self.userInitiatedDisconnect = true
-                performEndCallAction(uuid: self.call!.uuid!)
+                performEndCallAction(uuid: self.callInvite?.uuid ?? self.call!.uuid!)
                 //self.toggleUIState(isEnabled: false, showCallControl: false)
-            }
+            } 
         }else if flutterCall.method == "registerClient"{
             guard let clientId = arguments["id"] as? String, let clientName =  arguments["name"] as? String else {return}
             if clients[clientId] == nil || clients[clientId] != clientName{
