@@ -1023,15 +1023,9 @@ public class SwiftTwilioVoicePlugin: NSObject, FlutterPlugin,  FlutterStreamHand
             return
         }
 
-
-        guard Thread.isMainThread else {
-            DispatchQueue.main.sync {
-                eventSink(event)
-            }
-            return
+        DispatchQueue.main.async {
+            eventSink(event)
         }
-
-        eventSink(event)
     }
 
     public func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
