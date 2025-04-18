@@ -239,7 +239,22 @@ public class SwiftTwilioVoicePlugin: NSObject, FlutterPlugin,  FlutterStreamHand
             }
         }
         else if flutterCall.method == "answer" {
-            // nuthin
+            guard let callInvite = self.callInvite else {
+                self.sendPhoneCallEvents(description: "LOG|No active call invite to answer", isError: false)
+                return
+            }
+            
+            // Use CallKit to answer the call
+            let answerCallAction = CXAnswerCallAction(call: callInvite.uuid)
+            let transaction = CXTransaction(action: answerCallAction)
+            
+            callKitCallController.request(transaction) { error in
+                if let error = error {
+                    self.sendPhoneCallEvents(description: "LOG|Failed to answer call: \(error.localizedDescription)", isError: false)
+                } else {
+                    self.sendPhoneCallEvents(description: "LOG|Call answer request successful", isError: false)
+                }
+            }
         }
         else if flutterCall.method == "unregister" {
             guard let deviceToken = deviceToken else {
