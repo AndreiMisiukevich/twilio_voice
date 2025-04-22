@@ -988,6 +988,7 @@ public class SwiftTwilioVoicePlugin: NSObject, FlutterPlugin,  FlutterStreamHand
             }
         } else {
             self.sendPhoneCallEvents(description: "LOG|No CallInvite matches the UUID", isError: false)
+            completionHandler(false)
         }
     }
     
