@@ -6,24 +6,34 @@ package com.twilio.twilio_voice.service
 
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import android.os.Bundle
 import android.telecom.CallAudioState
 import android.telecom.Connection
 import android.telecom.DisconnectCause
+import android.telecom.StatusHints
 import android.util.Log
+import android.graphics.drawable.Icon
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
+import com.twilio.twilio_voice.R
 import com.twilio.twilio_voice.call.TVParameters
 import com.twilio.twilio_voice.receivers.TVBroadcastReceiver
 import com.twilio.twilio_voice.types.CallAudioStateExtension.copyWith
 import com.twilio.twilio_voice.types.CallDirection
 import com.twilio.twilio_voice.types.CallExceptionExtension.toBundle
 import com.twilio.twilio_voice.types.CompletionHandler
+import com.twilio.twilio_voice.types.ContextExtension.hasMicrophoneAccess
 import com.twilio.twilio_voice.types.TVNativeCallActions
 import com.twilio.twilio_voice.types.TVNativeCallEvents
 import com.twilio.twilio_voice.types.ValueBundleChanged
 import com.twilio.voice.Call
 import com.twilio.voice.CallException
 import com.twilio.voice.CallInvite
+import com.twilio.twilio_voice.types.ContextExtension
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import androidx.core.app.NotificationCompat
+import android.app.PendingIntent
 
 
 class TVCallInviteConnection(
@@ -45,6 +55,50 @@ class TVCallInviteConnection(
     }
 
     override fun onAnswer() {
+        if (!context.hasMicrophoneAccess()) {
+            val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            val channelId = "twilio_voice_permissions"
+            val channelName = "Twilio Voice Permissions"
+            
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val channel = NotificationChannel(
+                    channelId,
+                    channelName,
+                    NotificationManager.IMPORTANCE_HIGH
+                ).apply {
+                    description = "Phone call permissions notifications"
+                }
+                notificationManager.createNotificationChannel(channel)
+            }
+            
+            // Create intent to open app settings
+            val settingsIntent = Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                data = android.net.Uri.fromParts("package", context.packageName, null)
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            val pendingIntent = PendingIntent.getActivity(
+                context,
+                0,
+                settingsIntent,
+                PendingIntent.FLAG_IMMUTABLE
+            )
+
+            val notification = NotificationCompat.Builder(context, channelId)
+                .setContentTitle("Couldn't accept the call")
+                .setContentText("Please enable mic access in your device settings to accept calls")
+                .setSmallIcon(context.resources.getIdentifier("ic_stat_onesignal_default", "drawable", context.packageName))
+                .setLargeIcon(android.graphics.BitmapFactory.decodeResource(context.resources, context.resources.getIdentifier("ic_onesignal_large_icon_default", "drawable", context.packageName)))
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setAutoCancel(true)
+                .setContentIntent(pendingIntent)
+                .build()
+            notificationManager.notify(1, notification)
+            
+            // Reject the call since we can't accept it without permission
+            onReject()
+            return
+        }
+
         Log.d(TAG, "onAnswer: onAnswer")
         super.onAnswer()
         twilioCall = callInvite.accept(context, this)
