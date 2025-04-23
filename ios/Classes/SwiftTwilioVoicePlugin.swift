@@ -141,8 +141,17 @@ public class SwiftTwilioVoicePlugin: NSObject, FlutterPlugin,  FlutterStreamHand
         {
             guard let muted = arguments["muted"] as? Bool else {return}
             if (self.call != nil) {
-
                 self.call!.isMuted = muted
+                
+                // Update CallKit mute state
+                let muteAction = CXSetMutedCallAction(call: self.call!.uuid!, muted: muted)
+                let transaction = CXTransaction(action: muteAction)
+                callKitCallController.request(transaction) { error in
+                    if let error = error {
+                        self.sendPhoneCallEvents(description: "LOG|Failed to update mute state: \(error.localizedDescription)", isError: false)
+                    }
+                }
+                
                 guard let eventSink = eventSink else {
                     return
                 }
@@ -867,6 +876,9 @@ public class SwiftTwilioVoicePlugin: NSObject, FlutterPlugin,  FlutterStreamHand
         
         if let call = self.call {
             call.isMuted = action.isMuted
+            if let eventSink = eventSink {
+                eventSink(action.isMuted ? "Mute" : "Unmute")
+            }
             action.fulfill()
         } else {
             action.fail()
@@ -1001,6 +1013,11 @@ public class SwiftTwilioVoicePlugin: NSObject, FlutterPlugin,  FlutterStreamHand
             selector: #selector(CallDelegate.callDidDisconnect),
             name: NSNotification.Name(rawValue: "PhoneCallEvent"),
             object: nil)
+
+        NotificationCenter.default.addObserver(self,
+            selector: #selector(handleAudioRouteChange),
+            name: AVAudioSession.routeChangeNotification,
+            object: nil)
         
         return nil
     }
@@ -1058,6 +1075,19 @@ public class SwiftTwilioVoicePlugin: NSObject, FlutterPlugin,  FlutterStreamHand
         }
     }
     
+    @objc func handleAudioRouteChange(notification: Notification) {
+        guard let eventSink = eventSink,
+              let userInfo = notification.userInfo,
+              let reasonValue = userInfo[AVAudioSessionRouteChangeReasonKey] as? UInt,
+              let reason = AVAudioSession.RouteChangeReason(rawValue: reasonValue),
+              reason == .oldDeviceUnavailable || reason == .newDeviceAvailable
+               else {
+            return
+        }
+        
+        let isOnSpeaker: Bool = isSpeakerOn();
+        eventSink(isOnSpeaker ? "Speaker On" : "Speaker Off")
+    }
 }
 
 extension UIWindow {
