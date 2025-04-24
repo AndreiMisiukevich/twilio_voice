@@ -609,8 +609,7 @@ namespace twilio_voice
     }
     else if (method == "requestMicPermission")
     {
-      // Permission is requested in the hasMicPermission method automatically.
-      result->Success(true);
+      CheckMicrophonePermission(std::move(result));
     }
     else if (method == "isHolding")
     {
