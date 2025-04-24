@@ -55,50 +55,6 @@ class TVCallInviteConnection(
     }
 
     override fun onAnswer() {
-        if (!context.hasMicrophoneAccess()) {
-            val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            val channelId = "twilio_voice_permissions"
-            val channelName = "Twilio Voice Permissions"
-            
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                val channel = NotificationChannel(
-                    channelId,
-                    channelName,
-                    NotificationManager.IMPORTANCE_HIGH
-                ).apply {
-                    description = "Phone call permissions notifications"
-                }
-                notificationManager.createNotificationChannel(channel)
-            }
-            
-            // Create intent to open app settings
-            val settingsIntent = Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                data = android.net.Uri.fromParts("package", context.packageName, null)
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK
-            }
-            val pendingIntent = PendingIntent.getActivity(
-                context,
-                0,
-                settingsIntent,
-                PendingIntent.FLAG_IMMUTABLE
-            )
-
-            val notification = NotificationCompat.Builder(context, channelId)
-                .setContentTitle("Couldn't accept the call")
-                .setContentText("Please enable mic access in your device settings to accept calls")
-                .setSmallIcon(context.resources.getIdentifier("ic_stat_onesignal_default", "drawable", context.packageName))
-                .setLargeIcon(android.graphics.BitmapFactory.decodeResource(context.resources, context.resources.getIdentifier("ic_onesignal_large_icon_default", "drawable", context.packageName)))
-                .setPriority(NotificationCompat.PRIORITY_HIGH)
-                .setAutoCancel(true)
-                .setContentIntent(pendingIntent)
-                .build()
-            notificationManager.notify(1, notification)
-            
-            // Reject the call since we can't accept it without permission
-            onReject()
-            return
-        }
-
         Log.d(TAG, "onAnswer: onAnswer")
         super.onAnswer()
         twilioCall = callInvite.accept(context, this)
@@ -386,6 +342,47 @@ open class TVCallConnection(
     }
 
     override fun onAnswer(videoState: Int) {
+          if (!context.hasMicrophoneAccess()) {
+            val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            val channelId = "twilio_voice_permissions"
+            val channelName = "Twilio Voice Permissions"
+            
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val channel = NotificationChannel(
+                    channelId,
+                    channelName,
+                    NotificationManager.IMPORTANCE_HIGH
+                ).apply {
+                    description = "Phone call permissions notifications"
+                }
+                notificationManager.createNotificationChannel(channel)
+            }
+            
+            // Create intent to open app settings
+            val settingsIntent = Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                data = android.net.Uri.fromParts("package", context.packageName, null)
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            val pendingIntent = PendingIntent.getActivity(
+                context,
+                0,
+                settingsIntent,
+                PendingIntent.FLAG_IMMUTABLE
+            )
+
+            val notification = NotificationCompat.Builder(context, channelId)
+                .setContentTitle("Unable to Answer Call - Microphone Access Needed")
+                .setContentText("An incoming call is waiting, but you need to enable microphone access in settings to accept calls.")
+                .setSmallIcon(context.resources.getIdentifier("ic_stat_onesignal_default", "drawable", context.packageName))
+                .setLargeIcon(android.graphics.BitmapFactory.decodeResource(context.resources, context.resources.getIdentifier("ic_onesignal_large_icon_default", "drawable", context.packageName)))
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setAutoCancel(true)
+                .setContentIntent(pendingIntent)
+                .build()
+            notificationManager.notify(1, notification)
+            return
+        }
+
         super.onAnswer(videoState)
         Log.d(TAG, "onAnswer: onAnswer")
     }
