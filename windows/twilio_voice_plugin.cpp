@@ -31,6 +31,67 @@ using json = nlohmann::json;
 
 namespace twilio_voice
 {
+  // Add this helper function at the top of the namespace
+  std::string getCustomParamValue(const std::string& parsedCustomParams, const std::string& key) {
+    try {
+      auto json = nlohmann::json::parse(parsedCustomParams);
+      if (json.contains(key)) {
+        return json[key].get<std::string>();
+      }
+    } catch (const std::exception& e) {
+      TV_LOG_ERROR("Error getting custom parameter value: " + std::string(e.what()));
+    }
+    return "";
+  }
+
+  // Add this helper function at the top of the namespace, before any other code
+  std::string parseCustomParams(const std::string& customParamsStr) {
+    try {
+      // Remove quotes if present
+      std::string params = customParamsStr;
+      if (!params.empty() && params.front() == '"' && params.back() == '"') {
+        params = params.substr(1, params.length() - 2);
+      }
+
+      // Split by & and parse each parameter
+      std::stringstream ss(params);
+      std::string param;
+      std::map<std::string, std::string> parsedParams;
+      
+      while (std::getline(ss, param, '&')) {
+        size_t equalPos = param.find('=');
+        if (equalPos != std::string::npos) {
+          std::string key = param.substr(0, equalPos);
+          std::string value = param.substr(equalPos + 1);
+          
+          // URL decode the value
+          std::string decodedValue;
+          for (size_t i = 0; i < value.length(); ++i) {
+            if (value[i] == '%' && i + 2 < value.length()) {
+              std::string hex = value.substr(i + 1, 2);
+              char ch = static_cast<char>(std::stoi(hex, nullptr, 16));
+              decodedValue += ch;
+              i += 2;
+            } else if (value[i] == '+') {
+              decodedValue += ' ';
+            } else {
+              decodedValue += value[i];
+            }
+          }
+          
+          parsedParams[key] = decodedValue;
+        }
+      }
+
+      // Convert to JSON string
+      json j = parsedParams;
+      return j.dump();
+    } catch (const std::exception& e) {
+      TV_LOG_ERROR("Error parsing custom parameters: " + std::string(e.what()));
+      return "{}";
+    }
+  }
+
   class TVNotificationActivationCallbackFactory : public Microsoft::WRL::RuntimeClass<
                                                       Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>,
                                                       IClassFactory>
@@ -167,13 +228,7 @@ namespace twilio_voice
                         utf8Message = utf8Message.substr(0, jsonEnd + 1);
                     }
                     
-                    std::string unescapedJson = utf8Message;
-                    size_t pos = 0;
-                    while ((pos = unescapedJson.find("\\\"", pos)) != std::string::npos) {
-                        unescapedJson.replace(pos, 2, "\"");
-                        pos += 1;
-                    }
-                    auto json = nlohmann::json::parse(unescapedJson);
+                    auto json = nlohmann::json::parse(utf8Message);
                   
                   if (json.contains("type")) {
                     std::string typeValue = json["type"].get<std::string>();
@@ -186,27 +241,33 @@ namespace twilio_voice
                         std::string from = json.value("from", "");
                         std::string to = json.value("to", "");
                         std::string callSid = json.value("callSid", "");
-                        TVNotificationManager::getInstance().showIncomingCallNotification(from, callSid);
-                        SendEventToFlutter("Incoming|" + from + "|" + to + "|Incoming");
+                        std::string customParams = json.value("customParams", "");
+                        std::string parsedCustomParams = parseCustomParams(customParams);
+                        TVNotificationManager::getInstance().showIncomingCallNotification(getCustomParamValue(parsedCustomParams, "__TWI_CALLER_NAME"), callSid);
+                        SendEventToFlutter("Incoming|" + from + "|" + to + "|Incoming|" + parsedCustomParams);
                       } else if (eventValue == "cancel") {
                         // Handle missed call
                         std::string from = json.value("from", "");
                         std::string to = json.value("to", "");
                         std::string callSid = json.value("callSid", "");
+                        std::string customParams = json.value("customParams", "");
+                        std::string parsedCustomParams = parseCustomParams(customParams);
                         // Hide the previous incoming call notification
                         TVNotificationManager::getInstance().hideNotification(callSid, true);
                         // Show missed call notification
-                        TVNotificationManager::getInstance().showMissedCallNotification(from, callSid);
+                        TVNotificationManager::getInstance().showMissedCallNotification(getCustomParamValue(parsedCustomParams, "__TWI_CALLER_NAME"), callSid);
                         SendEventToFlutter("Missed Call");
                         SendEventToFlutter("Call Ended");
                       } else if (eventValue == "connected") {
                         std::string from = json.value("from", "");
                         std::string to = json.value("to", "");
-                        SendEventToFlutter("Connected|" + from + "|" + to + "|Outgoing");
+                        std::string customParams = json.value("customParams", "");
+                        SendEventToFlutter("Connected|" + from + "|" + to + "|Outgoing|" + parseCustomParams(customParams));
                       } else if (eventValue == "accept") {
                         std::string from = json.value("from", "");
                         std::string to = json.value("to", "");
-                        SendEventToFlutter("Answer|" + from + "|" + to);
+                        std::string customParams = json.value("customParams", "");
+                        SendEventToFlutter("Answer|" + from + "|" + to + "|" + parseCustomParams(customParams));
                       } else if (eventValue == "disconnected") {
                         SendEventToFlutter("Call Ended");
                       } else if (eventValue == "reject") {
@@ -291,13 +352,23 @@ namespace twilio_voice
                                            L"    window.device.on('incoming', (call) => {"
                                            L"      const params = call.parameters;"
                                            L"      window.connection = call;"
+                                           L"      const customParamsStr = JSON.stringify(params.Params);"
+                                           L"      window.chrome.webview.postMessage({"
+                                           L"        type: 'call_event',"
+                                           L"        event: 'incoming',"
+                                           L"        from: params.From,"
+                                           L"        to: params.To,"
+                                           L"        callSid: params.CallSid,"
+                                           L"        customParams: customParamsStr"
+                                           L"      });"
                                            L"      call.on('accept', () => {"
                                            L"        window.chrome.webview.postMessage({"
                                            L"          type: 'call_event',"
                                            L"          event: 'accept',"
                                            L"          from: params.From,"
                                            L"          to: params.To,"
-                                           L"          callSid: params.CallSid"
+                                           L"          callSid: params.CallSid,"
+                                           L"          customParams: customParamsStr"
                                            L"        });"
                                            L"      });"
                                            L"      call.on('cancel', () => {"
@@ -306,7 +377,8 @@ namespace twilio_voice
                                            L"          event: 'cancel',"
                                            L"          from: params.From,"
                                            L"          to: params.To,"
-                                           L"          callSid: params.CallSid"
+                                           L"          callSid: params.CallSid,"
+                                           L"          customParams: customParamsStr"
                                            L"        });"
                                            L"      });"
                                            L"      call.on('disconnect', () => {"
@@ -328,21 +400,16 @@ namespace twilio_voice
                                            L"          event: 'reject'"
                                            L"        });"
                                            L"      });"
-                                           L"      window.chrome.webview.postMessage({"
-                                           L"        type: 'call_event',"
-                                           L"        event: 'incoming',"
-                                           L"        from: params.From,"
-                                           L"        to: params.To,"
-                                           L"        callSid: params.CallSid"
-                                           L"      });"
                                            L"    });"
                                            L"    window.device.on('connect', (call) => {"
                                            L"      const params = call.parameters;"
+                                           L"      const customParamsStr = JSON.stringify(params.Params);"
                                            L"      window.chrome.webview.postMessage({"
                                            L"        type: 'call_event',"
                                            L"        event: 'connected',"
                                            L"        from: params.From,"
                                            L"        to: params.To,"
+                                           L"        customParams: customParamsStr,"
                                            L"        callSid: params.CallSid"
                                            L"      });"
                                            L"    });"
@@ -1210,7 +1277,7 @@ namespace twilio_voice
 
       std::wstring title = isIncomingCall ? L"Incoming Call" : L"Missed Call";
       std::wstring scenario = isIncomingCall ? L" scenario='alarm' silent='true'" : L"";
-      std::wstring xml = L"<toast" + scenario + L">"
+      std::wstring xml = L"<toast>"
                                                 L"<visual><binding template='ToastGeneric'>"
                                                 L"<text>" +
                          title + L"</text>"
@@ -1227,7 +1294,7 @@ namespace twilio_voice
       }
       else
       {
-        xml += L"<action content='Call Back' arguments='call:" + wCallSid + L"' activationType='foreground'/>";
+        //xml += L"<action content='Call Back' arguments='call:" + wCallSid + L"' activationType='foreground'/>"; TODO: may implement later
       }
 
       xml += L"</actions>"
@@ -1584,6 +1651,5 @@ namespace twilio_voice
         L"  }"
         L"})()",
         [](void *, std::string result) {});
-  }
-
+  }  
 } // namespace twilio_voice
