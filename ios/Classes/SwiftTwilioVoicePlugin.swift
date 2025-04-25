@@ -761,7 +761,7 @@ public class SwiftTwilioVoicePlugin: NSObject, FlutterPlugin,  FlutterStreamHand
                 case AVAudioSession.Port.builtInSpeaker:
                     return true;
                 default:
-                    return false;
+                    break;
             }
         }
         return false;
@@ -1075,18 +1075,12 @@ public class SwiftTwilioVoicePlugin: NSObject, FlutterPlugin,  FlutterStreamHand
         }
     }
     
-    @objc func handleAudioRouteChange(notification: Notification) {
-        guard let eventSink = eventSink,
-              let userInfo = notification.userInfo,
-              let reasonValue = userInfo[AVAudioSessionRouteChangeReasonKey] as? UInt,
-              let reason = AVAudioSession.RouteChangeReason(rawValue: reasonValue),
-              reason == .oldDeviceUnavailable || reason == .newDeviceAvailable
-               else {
+    func handleAudioRouteChange(notification: Notification) {
+        guard let eventSink = eventSink else {
             return
         }
-        
-        let isOnSpeaker: Bool = isSpeakerOn();
-        eventSink(isOnSpeaker ? "Speaker On" : "Speaker Off")
+        let isOnSpeaker: Bool = isSpeakerOn()
+        self.sendPhoneCallEvents(description: isOnSpeaker ? "Speaker On" : "Speaker Off", isError: false)
     }
 }
 
