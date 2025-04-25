@@ -1075,7 +1075,7 @@ public class SwiftTwilioVoicePlugin: NSObject, FlutterPlugin,  FlutterStreamHand
         }
     }
     
-    func handleAudioRouteChange(notification: Notification) {
+    @objc func handleAudioRouteChange(notification: Notification) {
         guard let eventSink = eventSink else {
             return
         }
