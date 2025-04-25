@@ -13,6 +13,11 @@
 #include <shlobj.h>
 #include <propvarutil.h>
 
+// Add WinRT headers
+#include <winrt/Windows.Foundation.h>
+#include <winrt/Windows.ApplicationModel.h>
+#include <winrt/Windows.Security.Authorization.AppCapabilityAccess.h>
+
 #include "twilio_voice_plugin.h"
 #include "utils/tv_logger.h"
 
@@ -681,55 +686,120 @@ namespace twilio_voice
     }
   }
 
+  bool TwilioVoicePlugin::CheckWindowsMicrophonePermission() {
+    try {
+      // Check if we're already in a WinRT apartment
+      APTTYPE aptType;
+      APTTYPEQUALIFIER aptQualifier;
+      HRESULT hr = CoGetApartmentType(&aptType, &aptQualifier);
+      
+      if (FAILED(hr)) {
+        // Initialize WinRT only if we're not already in an apartment
+        winrt::init_apartment();
+      }
+
+      // Create the AppCapability object for microphone
+      auto capability = winrt::Windows::Security::Authorization::AppCapabilityAccess::AppCapability::Create(L"microphone");
+
+      // Check the current access status
+      auto status = capability.CheckAccess();
+
+      // Convert the status to a boolean result
+      bool hasPermission = (status == winrt::Windows::Security::Authorization::AppCapabilityAccess::AppCapabilityAccessStatus::Allowed);
+
+      return hasPermission;
+    }
+    catch (const winrt::hresult_error& ex) {
+      TV_LOG_ERROR("Error checking microphone permission: " + winrt::to_string(ex.message()));
+      return false;
+    }
+    catch (const std::exception& ex) {
+      TV_LOG_ERROR("Error checking microphone permission: " + std::string(ex.what()));
+      return false;
+    }
+  }
+
   void TwilioVoicePlugin::CheckMicrophonePermission(
       std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result)
   {
+    // First check Windows system permissions
+    bool hasWindowsPermission = CheckWindowsMicrophonePermission();
+    if (!hasWindowsPermission) {
+      if (result) {
+        result->Success(false);
+      }
+      return;
+    }
+
     std::wstring checkPermissionScript = L"(async () => {"
-                                         L"  try {"
-                                         L"    const permission = await navigator.permissions.query({name:'microphone'});"
-                                         L"    return permission.state === 'granted';"
-                                         L"  } catch (error) {"
-                                         L"    return false;"
-                                         L"  }"
-                                         L"})()";
+        L"  try {"
+        L"    const permission = await navigator.permissions.query({name:'microphone'});"
+        L"    const permissionGranted = permission.state === 'granted';"
+        L"    window.chrome.webview.postMessage({"
+        L"      type: 'permission_result',"
+        L"      granted: permissionGranted"
+        L"    });"
+        L"    return permissionGranted;"
+        L"  } catch (error) {"
+        L"    window.chrome.webview.postMessage({"
+        L"      type: 'permission_result',"
+        L"      granted: false"
+        L"    });"
+        L"    return false;"
+        L"  }"
+        L"})()";
 
     if (result)
     {
       auto shared_result = std::make_shared<std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>>>(
           std::move(result));
 
+      // Store the result pointer in a map with a unique ID
+      static std::map<std::string, std::shared_ptr<std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>>>> pending_results;
+      std::string result_id = "permission_check_" + std::to_string(std::chrono::system_clock::now().time_since_epoch().count());
+      pending_results[result_id] = shared_result;
+
+      // Add a one-time message handler for this specific permission check
+      webview_->getWebView()->add_WebMessageReceived(
+          Microsoft::WRL::Callback<ICoreWebView2WebMessageReceivedEventHandler>(
+              [this, result_id, shared_result](ICoreWebView2* sender, ICoreWebView2WebMessageReceivedEventArgs* args) -> HRESULT {
+                  LPWSTR message;
+                  args->get_WebMessageAsJson(&message);
+                  if (message) {
+                      int utf8Length = WideCharToMultiByte(CP_UTF8, 0, message, -1, nullptr, 0, nullptr, nullptr);
+                      if (utf8Length > 0) {
+                          std::string utf8Message;
+                          utf8Message.resize(utf8Length - 1);
+                          WideCharToMultiByte(CP_UTF8, 0, message, -1, &utf8Message[0], utf8Length, nullptr, nullptr);
+                          
+                          try {
+                              auto json = nlohmann::json::parse(utf8Message);
+                              if (json.contains("type") && json["type"] == "permission_result") {
+                                  bool granted = json.value("granted", false);
+                                  (*shared_result)->Success(granted);
+                                  // Remove the handler and result from the map
+                                  pending_results.erase(result_id);
+                                  return S_OK;
+                              }
+                          } catch (const std::exception& e) {
+                              TV_LOG_ERROR("Error parsing permission result: " + std::string(e.what()));
+                          }
+                      }
+                      CoTaskMemFree(message);
+                  }
+                  return S_OK;
+              }).Get(),
+          nullptr);
+
       webview_->evaluateJavaScript(
           checkPermissionScript,
-          [shared_result](void *, std::string result)
-          {
-            try
-            {
-              bool hasPermission = result == "true";
-              (*shared_result)->Success(hasPermission);
-            }
-            catch (const std::exception &e)
-            {
-              TV_LOG_ERROR("Error parsing microphone permission response: " + std::string(e.what()));
-              (*shared_result)->Success(false);
-            }
-          });
+          [](void *, std::string result) {});
     }
     else
     {
       webview_->evaluateJavaScript(
           checkPermissionScript,
-          [](void *, std::string result)
-          {
-            try
-            {
-              bool hasPermission = result == "true";
-              TV_LOG_DEBUG("Microphone permission status: " + std::string(hasPermission ? "granted" : "denied"));
-            }
-            catch (const std::exception &e)
-            {
-              TV_LOG_ERROR("Error parsing microphone permission response: " + std::string(e.what()));
-            }
-          });
+          [](void *, std::string result) {});
     }
   }
 

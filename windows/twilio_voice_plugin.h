@@ -103,6 +103,7 @@ class TwilioVoicePlugin : public flutter::Plugin {
   void SendEventToFlutter(const std::string &event);
 
   // Mic permission handling
+   bool TwilioVoicePlugin::CheckWindowsMicrophonePermission();
   void CheckMicrophonePermission(std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result = nullptr);
 
   // Disallow copy and assign.
