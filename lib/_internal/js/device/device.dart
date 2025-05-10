@@ -30,10 +30,7 @@ class Device extends Twilio {
   external Device._(token, [DeviceInitOptions? options]);
 
   // factory used by js lib
-  external factory Device(
-    String token, [
-    DeviceInitOptions? options,
-  ]);
+  external factory Device(String token, [DeviceInitOptions? options]);
 
   // /// Returns array of active calls
   // /// Documentation: https://www.twilio.com/docs/voice/sdks/javascript/twiliodevice#devicecalls
@@ -55,7 +52,6 @@ class Device extends Twilio {
   @JS("connect")
   external Promise<Call> connect([DeviceConnectOptions? options]);
 
-
   /// Register device token with Twilio Voice Client
   /// Documentation: https://www.twilio.com/docs/voice/sdks/javascript/twiliodevice#deviceregister
   @JS("register")
@@ -67,16 +63,14 @@ class Device extends Twilio {
   external Promise<void> unregister();
 
   /// Attach event listener for Twilio Device object. See [TwilioDeviceEvents]
-  /// Documentation: https://www.twilio.com/docs/voice/sdks/javascript/twiliodevice#events
-  /// possibly use js interop here
-  @JS("on")
-  external void on(String event, Function callback);
+  /// Documentation: https://www.twilio.com/docs/voice/sdks/javascript/twiliodevice#deviceaddlistenereventname-listener
+  @JS("addListener")
+  external void addListener(String event, Function callback);
 
   /// Detach event listener for Twilio Device object. See [TwilioDeviceEvents]
-  /// Documentation: https://www.twilio.com/docs/voice/sdks/javascript/twiliodevice#events
-  /// possibly use js interop here
-  @JS("off")
-  external void off(String event, Function callback);
+  /// Documentation: https://www.twilio.com/docs/voice/sdks/javascript/twiliodevice#deviceremovelistenereventname-listener
+  @JS("removeListener")
+  external void removeListener(String event, Function callback);
 }
 
 /// Device options
@@ -111,7 +105,12 @@ class DeviceInitOptions {
   /// set to false by default
   external bool allowIncomingWhileBusy;
 
-  external factory DeviceInitOptions({int logLevel = 1, List<String>? codecPreferences, bool closeProtection = false, /*bool allowIncomingWhileBusy = false*/});
+  external factory DeviceInitOptions({
+    int logLevel = 1,
+    List<String>? codecPreferences,
+    bool closeProtection = false,
+    /*bool allowIncomingWhileBusy = false*/
+  });
 }
 
 /// Device Connect options
