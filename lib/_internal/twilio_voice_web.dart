@@ -492,11 +492,11 @@ class TwilioVoiceWeb extends MethodChannelTwilioVoice {
   void _attachDeviceListeners(twilio_js.Device device) {
     // ignore: unnecessary_null_comparison
     assert(device != null, "Device cannot be null");
-    device.addListener("registered", js.allowInterop(_onDeviceRegistered));
-    device.addListener("unregistered", js.allowInterop(_onDeviceUnregistered));
-    device.addListener("error", js.allowInterop(_onDeviceError));
-    device.addListener("incoming", js.allowInterop(_onDeviceIncoming));
-    device.addListener("tokenWillExpire", js.allowInterop(_onTokenWillExpire));
+    device.on("registered", js.allowInterop(_onDeviceRegistered));
+    device.on("unregistered", js.allowInterop(_onDeviceUnregistered));
+    device.on("error", js.allowInterop(_onDeviceError));
+    device.on("incoming", js.allowInterop(_onDeviceIncoming));
+    device.on("tokenWillExpire", js.allowInterop(_onTokenWillExpire));
   }
 
   /// Detach event listeners to [twilio_js.Device]
@@ -504,11 +504,11 @@ class TwilioVoiceWeb extends MethodChannelTwilioVoice {
   void _detachDeviceListeners(twilio_js.Device device) {
     // ignore: unnecessary_null_comparison
     assert(device != null, "Device cannot be null");
-    device.removeListener("registered", js.allowInterop(_onDeviceRegistered));
-    device.removeListener("unregistered", js.allowInterop(_onDeviceUnregistered));
-    device.removeListener("error", js.allowInterop(_onDeviceError));
-    device.removeListener("incoming", js.allowInterop(_onDeviceIncoming));
-    device.removeListener("tokenWillExpire", js.allowInterop(_onTokenWillExpire));
+    device.off("registered", js.allowInterop(_onDeviceRegistered));
+    device.off("unregistered", js.allowInterop(_onDeviceUnregistered));
+    device.off("error", js.allowInterop(_onDeviceError));
+    device.off("incoming", js.allowInterop(_onDeviceIncoming));
+    device.off("tokenWillExpire", js.allowInterop(_onTokenWillExpire));
   }
 
   /// On device registered and ready to make/receive calls via [twilio_js.Device.on] and [twilio_js.TwilioDeviceEvents.registered]
