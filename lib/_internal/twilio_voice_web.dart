@@ -500,15 +500,15 @@ class TwilioVoiceWeb extends MethodChannelTwilioVoice {
   }
 
   /// Detach event listeners to [twilio_js.Device]
-  /// See [twilio_js.Device.off]
+  /// See [twilio_js.Device.removeListener]
   void _detachDeviceListeners(twilio_js.Device device) {
     // ignore: unnecessary_null_comparison
     assert(device != null, "Device cannot be null");
-    device.off("registered", js.allowInterop(_onDeviceRegistered));
-    device.off("unregistered", js.allowInterop(_onDeviceUnregistered));
-    device.off("error", js.allowInterop(_onDeviceError));
-    device.off("incoming", js.allowInterop(_onDeviceIncoming));
-    device.off("tokenWillExpire", js.allowInterop(_onTokenWillExpire));
+    device.removeListener("registered", js.allowInterop(_onDeviceRegistered));
+    device.removeListener("unregistered", js.allowInterop(_onDeviceUnregistered));
+    device.removeListener("error", js.allowInterop(_onDeviceError));
+    device.removeListener("incoming", js.allowInterop(_onDeviceIncoming));
+    device.removeListener("tokenWillExpire", js.allowInterop(_onTokenWillExpire));
   }
 
   /// On device registered and ready to make/receive calls via [twilio_js.Device.on] and [twilio_js.TwilioDeviceEvents.registered]
@@ -869,7 +869,7 @@ class Call extends MethodChannelTwilioCall {
   }
 
   /// Detach event listeners to the active call
-  /// See [twilio_js.Call.off]
+  /// See [twilio_js.Call.removeListener]
   /// 'off' event listener isn't implemented in twilio-voice.js
   void _detachCallEventListeners(twilio_js.Call call) {
     // ignore: unnecessary_null_comparison
