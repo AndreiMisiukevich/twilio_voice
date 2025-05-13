@@ -1212,6 +1212,15 @@ public class TwilioVoicePlugin: NSObject, FlutterPlugin, FlutterStreamHandler, T
     func onDeviceIncoming(_ call: TVCall) {
         logEvent(description: "Incoming call")
         twilioCall = call
+        
+        // Bring app to foreground and unminimize if needed
+        if let window = NSApplication.shared.windows.first {
+            if window.isMiniaturized {
+                window.deminiaturize(nil)
+            }
+        }
+        NSApplication.shared.activate(ignoringOtherApps: true)
+        
         requestMicAccess { _, error in
             if let error = error {
                 print("Error: \(error)")
