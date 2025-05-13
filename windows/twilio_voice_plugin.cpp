@@ -1726,8 +1726,7 @@ namespace twilio_voice
         [](void *, std::string result) {});
   }
 
-  // Add this helper function in the twilio_voice namespace
-  void BringWindowToForeground(HWND hwnd) {
+  void TwilioVoicePlugin::BringWindowToForeground(HWND hwnd) {
     // If window is minimized, restore it
     if (IsIconic(hwnd)) {
         ShowWindow(hwnd, SW_RESTORE);
