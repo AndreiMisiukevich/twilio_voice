@@ -241,11 +241,7 @@ namespace twilio_voice
                     if (typeValue == "call_event" && json.contains("event")) {
                       std::string eventValue = json["event"].get<std::string>();
 
-                      if (eventValue == "incoming") {
-                        // Bring window to foreground when incoming call is received
-                        HWND hwnd = registrar_->GetView()->GetNativeWindow();
-                        BringWindowToForeground(hwnd);
-                        
+                      if (eventValue == "incoming") {                        
                         CheckMicrophonePermission();
                         std::string from = json.value("from", "");
                         std::string to = json.value("to", "");
@@ -1724,22 +1720,5 @@ namespace twilio_voice
         L"  }"
         L"})()",
         [](void *, std::string result) {});
-  }
-
-  void TwilioVoicePlugin::BringWindowToForeground(HWND hwnd) {
-    // If window is minimized, restore it
-    if (IsIconic(hwnd)) {
-        ShowWindow(hwnd, SW_RESTORE);
-    }
-    
-    // Bring window to front
-    SetForegroundWindow(hwnd);
-    SetActiveWindow(hwnd);
-    SetFocus(hwnd);
-    
-    // If window is not visible, show it
-    if (!IsWindowVisible(hwnd)) {
-        ShowWindow(hwnd, SW_SHOW);
-    }
   }
 } // namespace twilio_voice

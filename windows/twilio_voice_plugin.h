@@ -117,7 +117,6 @@ class TwilioVoicePlugin : public flutter::Plugin {
 
   static void UnsubscribeDeviceEventHandlers(TVWebView *webview);
   static void UnsubscribeConnectionEventHandlers(TVWebView *webview);
-  void BringWindowToForeground(HWND hwnd);
 };
 
 }  // namespace twilio_voice
