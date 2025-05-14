@@ -91,6 +91,8 @@ class TwilioVoicePlugin : public flutter::Plugin {
   static void HangUpCall(TVWebView* webview, std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result);
   static void MakeCall(TVWebView *webview, const std::string &from, const std::string &to, std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result);
 
+  static void FlashWindowTaskbar(HWND hwnd, bool flash);
+
  private:
   std::unique_ptr<TVWebView> webview_;
   std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>> channel_;

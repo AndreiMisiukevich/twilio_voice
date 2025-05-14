@@ -237,11 +237,15 @@ namespace twilio_voice
                   
                   if (json.contains("type")) {
                     std::string typeValue = json["type"].get<std::string>();
-                    
+
+                    HWND hwnd = registrar_->GetView()->GetNativeWindow();
+
                     if (typeValue == "call_event" && json.contains("event")) {
                       std::string eventValue = json["event"].get<std::string>();
 
-                      if (eventValue == "incoming") {                        
+                      if (eventValue == "incoming") {       
+                        FlashWindowTaskbar(hwnd, true);      
+                                   
                         CheckMicrophonePermission();
                         std::string from = json.value("from", "");
                         std::string to = json.value("to", "");
@@ -251,6 +255,7 @@ namespace twilio_voice
                         TVNotificationManager::getInstance().showIncomingCallNotification(getCustomParamValue(parsedCustomParams, "__TWI_CALLER_NAME"), callSid);
                         SendEventToFlutter("Incoming|" + from + "|" + to + "|Incoming|" + parsedCustomParams);
                       } else if (eventValue == "cancel") {
+                        FlashWindowTaskbar(hwnd, false);
                         // Handle missed call
                         std::string from = json.value("from", "");
                         std::string to = json.value("to", "");
@@ -264,20 +269,25 @@ namespace twilio_voice
                         SendEventToFlutter("Missed Call");
                         SendEventToFlutter("Call Ended");
                       } else if (eventValue == "connected") {
+                        FlashWindowTaskbar(hwnd, false);
                         std::string from = json.value("from", "");
                         std::string to = json.value("to", "");
                         std::string customParams = json.value("customParams", "");
                         SendEventToFlutter("Connected|" + from + "|" + to + "|Outgoing|" + parseCustomParams(customParams));
                       } else if (eventValue == "accept") {
+                        FlashWindowTaskbar(hwnd, false);
                         std::string from = json.value("from", "");
                         std::string to = json.value("to", "");
                         std::string customParams = json.value("customParams", "");
                         SendEventToFlutter("Answer|" + from + "|" + to + "|" + parseCustomParams(customParams));
                       } else if (eventValue == "disconnected") {
+                        FlashWindowTaskbar(hwnd, false);
                         SendEventToFlutter("Call Ended");
                       } else if (eventValue == "reject") {
+                        FlashWindowTaskbar(hwnd, false);
                         SendEventToFlutter("LOG|Call Rejected");
                       } else if (eventValue == "error") {
+                        FlashWindowTaskbar(hwnd, false);
                         std::string error = json.value("error", "Unknown error");
                         SendEventToFlutter("Error|" + error);
                       } else {
@@ -1720,5 +1730,14 @@ namespace twilio_voice
         L"  }"
         L"})()",
         [](void *, std::string result) {});
+  }
+
+  void TwilioVoicePlugin::FlashWindowTaskbar(HWND hwnd, bool flash) {
+    FLASHWINFO fi = { sizeof(FLASHWINFO) };
+    fi.hwnd = hwnd;
+    fi.uCount = 0;
+    fi.dwTimeout = 0;
+    fi.dwFlags = flash ? (FLASHW_ALL | FLASHW_TIMERNOFG) : FLASHW_STOP;
+    FlashWindowEx(&fi);
   }
 } // namespace twilio_voice
