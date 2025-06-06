@@ -1570,6 +1570,9 @@ class TwilioVoicePlugin : FlutterPlugin, MethodCallHandler, EventChannel.StreamH
         }
 
         logEvent("requestPermissionFor$permissionName")
+        
+        permissionResultHandler[requestCode] = onPermissionResult
+        
         val shouldShowRationale = ActivityCompat.shouldShowRequestPermissionRationale(activity!!, manifestPermission)
         if (shouldShowRationale) {
             val clickListener =
@@ -1580,11 +1583,12 @@ class TwilioVoicePlugin : FlutterPlugin, MethodCallHandler, EventChannel.StreamH
                 }
             val dismissListener = DialogInterface.OnDismissListener { _: DialogInterface? ->
                 logEvent("Request" + permissionName + "Access")
+                permissionResultHandler[requestCode]?.invoke(false)
+                permissionResultHandler.remove(requestCode)
             }
             showPermissionRationaleDialog(activity!!, "$permissionName Permissions", description, clickListener, dismissListener)
         } else {
             ActivityCompat.requestPermissions(activity!!, arrayOf(manifestPermission), requestCode)
-            permissionResultHandler[requestCode] = onPermissionResult
         }
     }
 
