@@ -83,4 +83,7 @@ abstract class TwilioCallPlatform extends SharedPlatformInterface {
 
   /// Send digits to active call
   Future<bool?> sendDigits(String digits);
+
+  /// Android ONLY: Accepts incoming call invite
+  Future<bool?> acceptCallInvite();
 }

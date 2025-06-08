@@ -119,4 +119,9 @@ class MethodChannelTwilioCall extends TwilioCallPlatform {
   Future<bool?> connect({Map<String, dynamic>? extraOptions}) {
     return Future.value(false);
   }
+
+  @override
+  Future<bool?> acceptCallInvite() {
+    return _channel.invokeMethod('acceptCallInvite', <String, dynamic>{});
+  }
 }

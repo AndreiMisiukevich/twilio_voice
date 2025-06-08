@@ -854,6 +854,12 @@ class Call extends MethodChannelTwilioCall {
     return true;
   }
 
+  @override
+  Future<bool?> acceptCallInvite() {
+    // Not relevant for web
+    return Future.value(true);
+  }
+
   final _callListenerWrappers = <Function, Function>{};
 
   Function _wrapCallListener(Function handler) => _callListenerWrappers[handler] ??= js.allowInterop(handler);

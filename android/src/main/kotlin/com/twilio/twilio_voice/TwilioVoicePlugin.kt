@@ -566,6 +566,12 @@ class TwilioVoicePlugin : FlutterPlugin, MethodCallHandler, EventChannel.StreamH
                 result.success(true)
             }
 
+            TVMethodChannels.ACCEPT_CALL_INVITE -> {
+                Log.d(TAG, "Accepting call invite")
+                acceptCallInvite()
+                result.success(true)
+            }
+
             TVMethodChannels.UNREGISTER -> {
                 val accessToken = call.argument<String?>("accessToken") ?: this.accessToken ?: run {
                     result.error(
@@ -965,6 +971,18 @@ class TwilioVoicePlugin : FlutterPlugin, MethodCallHandler, EventChannel.StreamH
             }
         } ?: run {
             Log.e(TAG, "Context is null. Cannot answer call.")
+        }
+    }
+
+    private fun acceptCallInvite() {
+        // Send to active call via Intent
+        context?.let { ctx ->
+            Intent(ctx, TVConnectionService::class.java).apply {
+                action = TVConnectionService.ACCEPT_CALL_INVITE
+                ctx.startService(this)
+            }
+        } ?: run {
+            Log.e(TAG, "Context is null. Cannot accept call invite.")
         }
     }
 

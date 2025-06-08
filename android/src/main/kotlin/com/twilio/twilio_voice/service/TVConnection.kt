@@ -34,6 +34,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import androidx.core.app.NotificationCompat
 import android.app.PendingIntent
+import android.telecom.TelecomManager
 
 
 class TVCallInviteConnection(
@@ -57,16 +58,37 @@ class TVCallInviteConnection(
     override fun onAnswer() {
         Log.d(TAG, "onAnswer: onAnswer")
         super.onAnswer()
+        
+        try {
+            val activityClass = Class.forName("${context.packageName}.MainActivity")
+            val intent = Intent(context, activityClass).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) // Required for non-activity context
+                addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP) // Reuse existing instance if available
+            }
+            intent.putExtra("native_ui_accept_pressed", true)
+            context.startActivity(intent)
+            Log.d(TAG, "The activity has been launched")
+        } catch (e: ClassNotFoundException) {
+            Log.e(TAG, "The activity is not registered: ${context.packageName}.MainActivity", e)
+            e.printStackTrace()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error occurred while launching an activity", e)
+            e.printStackTrace()
+        }
+    }
+     
+    fun answerCall() {
+        Log.d(TAG, "answerCall: answerCall")
+        onAnswer()
+    }
+
+    fun acceptInvite() {
+        Log.d(TAG, "acceptInvite: acceptInvite")
         twilioCall = callInvite.accept(context, this)
         onAction?.onChange(TVNativeCallActions.ACTION_ANSWERED, Bundle().apply {
             putParcelable(TVBroadcastReceiver.EXTRA_CALL_INVITE, callInvite)
             putInt(TVBroadcastReceiver.EXTRA_CALL_DIRECTION, callDirection.id)
         })
-    }
-
-    fun acceptInvite() {
-        Log.d(TAG, "acceptInvite: acceptInvite")
-        onAnswer()
     }
 
     fun rejectInvite() {
@@ -342,47 +364,6 @@ open class TVCallConnection(
     }
 
     override fun onAnswer(videoState: Int) {
-          if (!context.hasMicrophoneAccess()) {
-            val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            val channelId = "twilio_voice_permissions"
-            val channelName = "Twilio Voice Permissions"
-            
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                val channel = NotificationChannel(
-                    channelId,
-                    channelName,
-                    NotificationManager.IMPORTANCE_HIGH
-                ).apply {
-                    description = "Phone call permissions notifications"
-                }
-                notificationManager.createNotificationChannel(channel)
-            }
-            
-            // Create intent to open app settings
-            val settingsIntent = Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                data = android.net.Uri.fromParts("package", context.packageName, null)
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK
-            }
-            val pendingIntent = PendingIntent.getActivity(
-                context,
-                0,
-                settingsIntent,
-                PendingIntent.FLAG_IMMUTABLE
-            )
-
-            val notification = NotificationCompat.Builder(context, channelId)
-                .setContentTitle("Unable to Answer Call - Microphone Access Needed")
-                .setContentText("An incoming call is waiting, but you need to enable microphone access in settings to accept calls.")
-                .setSmallIcon(context.resources.getIdentifier("ic_stat_onesignal_default", "drawable", context.packageName))
-                .setLargeIcon(android.graphics.BitmapFactory.decodeResource(context.resources, context.resources.getIdentifier("ic_onesignal_large_icon_default", "drawable", context.packageName)))
-                .setPriority(NotificationCompat.PRIORITY_HIGH)
-                .setAutoCancel(true)
-                .setContentIntent(pendingIntent)
-                .build()
-            notificationManager.notify(1, notification)
-            return
-        }
-
         super.onAnswer(videoState)
         Log.d(TAG, "onAnswer: onAnswer")
     }

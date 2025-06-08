@@ -96,6 +96,11 @@ class TVConnectionService : ConnectionService() {
         const val ACTION_ANSWER: String = "ACTION_ANSWER"
 
         /**
+         * Action used to accept call invite.
+         */
+        const val ACCEPT_CALL_INVITE: String = "ACCEPT_CALL_INVITE"
+
+        /**
          * Action used to answer an incoming call connection.
          */
         const val ACTION_INCOMING_CALL: String = "ACTION_INCOMING_CALL"
@@ -305,6 +310,26 @@ class TVConnectionService : ConnectionService() {
                 }
 
                 ACTION_ANSWER -> {
+                    val callHandle = it.getStringExtra(EXTRA_CALL_HANDLE) ?: getIncomingCallHandle() ?: run {
+                        Log.e(TAG, "onStartCommand: ACTION_HANGUP is missing String EXTRA_CALL_HANDLE")
+                        return@let
+                    }
+
+                    val connection = getConnection(callHandle) ?: run {
+                        Log.e(TAG, "onStartCommand: [ACTION_HANGUP] could not find connection for callHandle: $callHandle")
+                        return@let
+                    }
+
+                    if(connection is TVCallInviteConnection) {
+                        connection.answerCall()
+                    } else {
+                        Log.e(TAG, "onStartCommand: [ACTION_ANSWER] could not find connection for callHandle: $callHandle")
+                    }
+                }
+
+                
+                ACCEPT_CALL_INVITE -> {
+                    Log.d(TAG, "Handle accept invite")
                     val callHandle = it.getStringExtra(EXTRA_CALL_HANDLE) ?: getIncomingCallHandle() ?: run {
                         Log.e(TAG, "onStartCommand: ACTION_HANGUP is missing String EXTRA_CALL_HANDLE")
                         return@let
