@@ -20,6 +20,7 @@ public class SwiftTwilioVoicePlugin: NSObject, FlutterPlugin,  FlutterStreamHand
     let kCachedDeviceToken = "CachedDeviceToken"
     let kCachedBindingDate = "CachedBindingDate"
     let kClientList = "TwilioContactList"
+    let kCallerId = "__TWI_CALLER_ID"
     let kCallerName = "__TWI_CALLER_NAME"
     let kRecipientName = "__TWI_RECIPIENT_NAME"
     private var clients: [String:String]!
@@ -594,8 +595,9 @@ public class SwiftTwilioVoicePlugin: NSObject, FlutterPlugin,  FlutterStreamHand
          */
         UserDefaults.standard.set(Date(), forKey: kCachedBindingDate)
         
-        var from:String = callInvite.from ?? defaultCaller
-        from = from.replacingOccurrences(of: "client:", with: "")
+        let from = callInvite.customParameters?[kCallerId] as? String ?? 
+            (callInvite.from ?? defaultCaller)
+                .replacingOccurrences(of: "client:", with: "")
         
         self.sendPhoneCallEvents(description: "Ringing|\(from)|\(callInvite.to)|Incoming\(formatCustomParams(params: callInvite.customParameters))", isError: false)
         reportIncomingCall(from: from, uuid: callInvite.uuid, params: callInvite.customParameters)
@@ -616,9 +618,10 @@ public class SwiftTwilioVoicePlugin: NSObject, FlutterPlugin,  FlutterStreamHand
     }
     
     public func cancelledCallInviteReceived(cancelledCallInvite: CancelledCallInvite, error: Error) {
+        let from = cancelledCallInvite.customParameters?[kCallerId] as? String ?? cancelledCallInvite.from
         self.sendPhoneCallEvents(description: "Missed Call", isError: false)
         self.sendPhoneCallEvents(description: "LOG|cancelledCallInviteCanceled:", isError: false)
-        self.showMissedCallNotification(from: cancelledCallInvite.from, to: cancelledCallInvite.to, params: cancelledCallInvite.customParameters)
+        self.showMissedCallNotification(from: from, to: cancelledCallInvite.to, params: cancelledCallInvite.customParameters)
         if (self.callInvite == nil) {
             self.sendPhoneCallEvents(description: "LOG|No pending call invite", isError: false)
             return
