@@ -1277,6 +1277,7 @@ class TwilioVoicePlugin : FlutterPlugin, MethodCallHandler, EventChannel.StreamH
         Log.d(TAG, "onDetachedFromActivityForConfigChanges")
         unregisterReceiver()
         activity = null
+        permissionResultHandler.clear()
     }
 
     override fun onReattachedToActivityForConfigChanges(activityPluginBinding: ActivityPluginBinding) {
@@ -1291,6 +1292,7 @@ class TwilioVoicePlugin : FlutterPlugin, MethodCallHandler, EventChannel.StreamH
         Log.d(TAG, "onDetachedFromActivity")
         unregisterReceiver()
         activity = null
+        permissionResultHandler.clear()
     }
     //endregion
 
@@ -1575,16 +1577,20 @@ class TwilioVoicePlugin : FlutterPlugin, MethodCallHandler, EventChannel.StreamH
         
         val shouldShowRationale = ActivityCompat.shouldShowRequestPermissionRationale(activity!!, manifestPermission)
         if (shouldShowRationale) {
+            var proceedClicked = false
             val clickListener =
                 DialogInterface.OnClickListener { _: DialogInterface?, _: Int ->
+                    proceedClicked = true
                     ActivityCompat.requestPermissions(
                         activity!!, arrayOf(manifestPermission), requestCode
                     )
                 }
             val dismissListener = DialogInterface.OnDismissListener { _: DialogInterface? ->
-                logEvent("Request" + permissionName + "Access")
-                permissionResultHandler[requestCode]?.invoke(false)
-                permissionResultHandler.remove(requestCode)
+                if (!proceedClicked) {
+                    logEvent("Request${permissionName}AccessDismissed")
+                    permissionResultHandler[requestCode]?.invoke(false)
+                    permissionResultHandler.remove(requestCode)
+                }
             }
             showPermissionRationaleDialog(activity!!, "$permissionName Permissions", description, clickListener, dismissListener)
         } else {
