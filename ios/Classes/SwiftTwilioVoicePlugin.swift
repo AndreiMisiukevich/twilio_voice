@@ -22,6 +22,7 @@ public class SwiftTwilioVoicePlugin: NSObject, FlutterPlugin,  FlutterStreamHand
     let kClientList = "TwilioContactList"
     let kCallerId = "__TWI_CALLER_ID"
     let kCallerName = "__TWI_CALLER_NAME"
+    let kRecipientId = "__TWI_RECIPIENT_ID"
     let kRecipientName = "__TWI_RECIPIENT_NAME"
     private var clients: [String:String]!
     
@@ -595,9 +596,7 @@ public class SwiftTwilioVoicePlugin: NSObject, FlutterPlugin,  FlutterStreamHand
          */
         UserDefaults.standard.set(Date(), forKey: kCachedBindingDate)
         
-        let from = callInvite.customParameters?[kCallerId] as? String ?? 
-            (callInvite.from ?? defaultCaller)
-                .replacingOccurrences(of: "client:", with: "")
+        let from = (callInvite.from ?? defaultCaller).replacingOccurrences(of: "client:", with: "")
         
         self.sendPhoneCallEvents(description: "Ringing|\(from)|\(callInvite.to)|Incoming\(formatCustomParams(params: callInvite.customParameters))", isError: false)
         reportIncomingCall(from: from, uuid: callInvite.uuid, params: callInvite.customParameters)
@@ -618,10 +617,9 @@ public class SwiftTwilioVoicePlugin: NSObject, FlutterPlugin,  FlutterStreamHand
     }
     
     public func cancelledCallInviteReceived(cancelledCallInvite: CancelledCallInvite, error: Error) {
-        let from = cancelledCallInvite.customParameters?[kCallerId] as? String ?? cancelledCallInvite.from
         self.sendPhoneCallEvents(description: "Missed Call", isError: false)
         self.sendPhoneCallEvents(description: "LOG|cancelledCallInviteCanceled:", isError: false)
-        self.showMissedCallNotification(from: from, to: cancelledCallInvite.to, params: cancelledCallInvite.customParameters)
+        self.showMissedCallNotification(from: cancelledCallInvite.from, to: cancelledCallInvite.to, params: cancelledCallInvite.customParameters)
         if (self.callInvite == nil) {
             self.sendPhoneCallEvents(description: "LOG|No pending call invite", isError: false)
             return
@@ -894,7 +892,7 @@ public class SwiftTwilioVoicePlugin: NSObject, FlutterPlugin,  FlutterStreamHand
     
     // MARK: Call Kit Actions
     func performStartCallAction(uuid: UUID, handle: String) {
-        let callHandle = CXHandle(type: .generic, value: handle)
+        let callHandle = CXHandle(type: .generic, value: self.callArgs[kRecipientId] as? String ?? handle)
         let startCallAction = CXStartCallAction(call: uuid, handle: callHandle)
         let transaction = CXTransaction(action: startCallAction)
         
@@ -920,7 +918,7 @@ public class SwiftTwilioVoicePlugin: NSObject, FlutterPlugin,  FlutterStreamHand
     }
     
     func reportIncomingCall(from: String, uuid: UUID, params: [String: Any]?) {
-        let callHandle = CXHandle(type: .generic, value: from)
+        let callHandle = CXHandle(type: .generic, value: params?[kCallerId] as? String ?? from)
         
         let callUpdate = CXCallUpdate()
         callUpdate.remoteHandle = callHandle
