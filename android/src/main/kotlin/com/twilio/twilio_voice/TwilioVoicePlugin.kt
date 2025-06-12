@@ -99,7 +99,7 @@ class TwilioVoicePlugin : FlutterPlugin, MethodCallHandler, EventChannel.StreamH
     private val REQUEST_CODE_CALL_PHONE = 3
     private val REQUEST_CODE_READ_PHONE_NUMBERS = 4
     private val REQUEST_CODE_READ_PHONE_STATE = 5
-    private val REQUEST_CODE_MICROPHONE_FOREGROUND = 6
+    private val REQUEST_CODE_PHONE_CALL_FOREGROUND = 6
     private val REQUEST_CODE_MANAGE_CALLS = 7
 
     private var isSpeakerOn: Boolean = false
@@ -250,8 +250,8 @@ class TwilioVoicePlugin : FlutterPlugin, MethodCallHandler, EventChannel.StreamH
         if (requestCode == REQUEST_CODE_MICROPHONE) {
             if (permissions.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                 Log.d(TAG, "Microphone permission granted")
-                requestPermissionForMicrophoneForeground(onPermissionResult = { granted ->
-                    Log.d(TAG, "onRequestPermissionsResult: Microphone foreground permission granted: $granted");
+                requestPermissionForPhoneCallForeground(onPermissionResult = { granted ->
+                    Log.d(TAG, "onRequestPermissionsResult: Phone call foreground permission granted: $granted");
                 });
                 logEventPermission("Microphone", true)
             } else {
@@ -297,13 +297,13 @@ class TwilioVoicePlugin : FlutterPlugin, MethodCallHandler, EventChannel.StreamH
                 Log.d(TAG, "Call Phone permission not granted")
                 logEventPermission("Call Phone State", false)
             }
-        } else if (requestCode == REQUEST_CODE_MICROPHONE_FOREGROUND) {
+        } else if (requestCode == REQUEST_CODE_PHONE_CALL_FOREGROUND) {
             if (permissions.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                Log.d(TAG, "Microphone foreground permission granted")
-                logEventPermission("Microphone", true)
+                Log.d(TAG, "Phone call foreground permission granted")
+                logEventPermission("Phone Call Foreground", true)
             } else {
-                Log.d(TAG, "Microphone foreground permission not granted")
-                logEventPermission("Microphone", false)
+                Log.d(TAG, "Phone call foreground permission not granted")
+                logEventPermission("Phone Call Foreground", false)
             }
         } else if (requestCode == REQUEST_CODE_MANAGE_CALLS) {
             if (permissions.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
@@ -1498,20 +1498,20 @@ class TwilioVoicePlugin : FlutterPlugin, MethodCallHandler, EventChannel.StreamH
         )
     }
 
-    /// Request permission for microphone on Android 14 and higher.
-    /// Source: https://developer.android.com/reference/android/Manifest.permission#FOREGROUND_SERVICE_MICROPHONE
-    private fun requestPermissionForMicrophoneForeground(onPermissionResult: (Boolean) -> Unit) {
+    /// Request permission for phone call on Android 14 and higher.
+    /// Source: https://developer.android.com/reference/android/Manifest.permission#FOREGROUND_SERVICE_PHONE_CALL
+    private fun requestPermissionForPhoneCallForeground(onPermissionResult: (Boolean) -> Unit) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            Log.d(TAG, "requestPermissionForMicrophoneForeground: Microphone foreground permission automatically requested.");
+            Log.d(TAG, "requestPermissionForPhoneCallForeground: Phone call foreground permission automatically requested.");
             return requestPermissionOrShowRationale(
-                "Microphone Foreground",
-                "Microphone Foreground permission is required to make or receive phone calls on Android 14 and higher.",
-                Manifest.permission.FOREGROUND_SERVICE_MICROPHONE,
-                REQUEST_CODE_MICROPHONE_FOREGROUND,
+                "Phone Call Foreground",
+                "Phone Call Foreground permission is required to make or receive phone calls on Android 14 and higher.",
+                Manifest.permission.FOREGROUND_SERVICE_PHONE_CALL,
+                REQUEST_CODE_PHONE_CALL_FOREGROUND,
                 onPermissionResult
             )
         } else {
-            Log.d(TAG, "requestPermissionForMicrophoneForeground: Microphone foreground permission skipped.");
+            Log.d(TAG, "requestPermissionForPhoneCallForeground: Phone call foreground permission skipped.");
         }
     }
 

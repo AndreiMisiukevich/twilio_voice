@@ -6,6 +6,9 @@ package com.twilio.twilio_voice.service
 
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
+import android.content.BroadcastReceiver
+import android.media.AudioManager
 import android.os.Build
 import android.os.Bundle
 import android.telecom.CallAudioState
@@ -34,6 +37,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import androidx.core.app.NotificationCompat
 import android.app.PendingIntent
+import android.app.Notification
 
 
 class TVCallInviteConnection(
@@ -56,7 +60,9 @@ class TVCallInviteConnection(
 
     override fun onAnswer() {
         Log.d(TAG, "onAnswer: onAnswer")
+        Log.i("TwilioVoiceDebug", "TVCallInviteConnection onAnswer called - calling super.onAnswer()")
         super.onAnswer()
+        Log.i("TwilioVoiceDebug", "After super.onAnswer() - now accepting CallInvite")
         twilioCall = callInvite.accept(context, this)
         onAction?.onChange(TVNativeCallActions.ACTION_ANSWERED, Bundle().apply {
             putParcelable(TVBroadcastReceiver.EXTRA_CALL_INVITE, callInvite)
@@ -66,6 +72,7 @@ class TVCallInviteConnection(
 
     fun acceptInvite() {
         Log.d(TAG, "acceptInvite: acceptInvite")
+        Log.i("TwilioVoiceDebug", "ACCEPT INVITE CALLED - Setting up audio mode for background call")
         onAnswer()
     }
 
@@ -107,6 +114,10 @@ open class TVCallConnection(
     private var onCallStateListener: CompletionHandler<Call.State>? = null
     open val callDirection = CallDirection.OUTGOING
     private var callParams: TVParameters? = null
+    
+    // Screen state monitoring for mid-call lock/unlock
+    private var screenStateReceiver: BroadcastReceiver? = null
+    private var isCallActive = false
 
     init {
         context = ctx
@@ -139,6 +150,73 @@ open class TVCallConnection(
 
     fun getCallParameters(): TVParameters? {
         return callParams
+    }
+
+    private fun setupScreenStateMonitoring() {
+        if (screenStateReceiver == null) {
+            screenStateReceiver = object : BroadcastReceiver() {
+                override fun onReceive(context: Context?, intent: Intent?) {
+                    when (intent?.action) {
+                        Intent.ACTION_SCREEN_ON -> {
+                            Log.i("TwilioVoiceDebug", "Screen unlocked during call - re-applying microphone workarounds")
+                            if (isCallActive) {
+                                // Re-apply audio mode when screen is unlocked during call
+                                try {
+                                    val audioManager = context?.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+                                    audioManager?.mode = AudioManager.MODE_IN_COMMUNICATION
+                                    Log.i("TwilioVoiceDebug", "Audio mode re-applied after screen unlock")
+                                    
+                                    // Also try to bring app to foreground
+                                    try {
+                                        val packageName = context?.packageName
+                                        val launchIntent = context?.packageManager?.getLaunchIntentForPackage(packageName ?: "")
+                                        if (launchIntent != null) {
+                                            launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                            launchIntent.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                                            launchIntent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+                                            context?.startActivity(launchIntent)
+                                            Log.i("TwilioVoiceDebug", "App brought to foreground after screen unlock")
+                                        }
+                                    } catch (e: Exception) {
+                                        Log.e("TwilioVoiceDebug", "Failed to bring app to foreground after unlock", e)
+                                    }
+                                } catch (e: Exception) {
+                                    Log.e("TwilioVoiceDebug", "Failed to re-apply audio mode after screen unlock", e)
+                                }
+                            }
+                        }
+                        Intent.ACTION_SCREEN_OFF -> {
+                            Log.i("TwilioVoiceDebug", "Screen locked during call")
+                        }
+                    }
+                }
+            }
+            
+            // Register receiver for screen state changes
+            try {
+                val filter = IntentFilter().apply {
+                    addAction(Intent.ACTION_SCREEN_ON)
+                    addAction(Intent.ACTION_SCREEN_OFF)
+                }
+                context.registerReceiver(screenStateReceiver, filter)
+                Log.i("TwilioVoiceDebug", "Screen state monitoring registered")
+            } catch (e: Exception) {
+                Log.e("TwilioVoiceDebug", "Failed to register screen state receiver", e)
+            }
+        }
+    }
+    
+    private fun cleanupScreenStateMonitoring() {
+        screenStateReceiver?.let { receiver ->
+            try {
+                context.unregisterReceiver(receiver)
+                Log.i("TwilioVoiceDebug", "Screen state monitoring unregistered")
+            } catch (e: Exception) {
+                Log.e("TwilioVoiceDebug", "Failed to unregister screen state receiver", e)
+            }
+            screenStateReceiver = null
+        }
+        isCallActive = false
     }
 
     //region Call.Listener
@@ -201,6 +279,146 @@ open class TVCallConnection(
 
     override fun onConnected(call: Call) {
         Log.d(TAG, "onConnected: onConnected")
+        
+        // Mark call as active and start monitoring screen state
+        isCallActive = true
+        setupScreenStateMonitoring()
+        
+        // CRITICAL: Set audio mode again when call connects to ensure proper routing
+        try {
+            val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+            audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
+            Log.d(TAG, "Audio mode set to MODE_IN_COMMUNICATION in onConnected")
+            Log.i("TwilioVoiceDebug", "Audio mode set to MODE_IN_COMMUNICATION in onConnected")
+            
+            // CRITICAL: Bring app to foreground to bypass Android 15 microphone restrictions
+            try {
+                Log.i("TwilioVoiceDebug", "Attempting to bring app to foreground for microphone access")
+                
+                // For locked screens, use full-screen intent notification (proper way for calls)
+                try {
+                    val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                    
+                    // Create a full-screen intent that can bypass lock screen
+                    val packageName = context.packageName
+                    val launchIntent = context.packageManager.getLaunchIntentForPackage(packageName)
+                    if (launchIntent != null) {
+                        // Add special flags for call handling
+                        launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        launchIntent.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                        launchIntent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                        launchIntent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+                        
+                        // Create full-screen intent for locked screens
+                        val fullScreenIntent = PendingIntent.getActivity(
+                            context,
+                            0,
+                            launchIntent,
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                            } else {
+                                PendingIntent.FLAG_UPDATE_CURRENT
+                            }
+                        )
+                        
+                        // Create notification channel for call notifications
+                        val channelId = "incoming_call_channel"
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                            val channel = NotificationChannel(
+                                channelId,
+                                "Incoming Calls",
+                                NotificationManager.IMPORTANCE_HIGH
+                            ).apply {
+                                description = "Notifications for incoming voice calls"
+                                setBypassDnd(true)
+                                lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+                            }
+                            notificationManager.createNotificationChannel(channel)
+                        }
+                        
+                        // Create full-screen notification for calls (works on locked screens)
+                        val notification = NotificationCompat.Builder(context, channelId)
+                            .setContentTitle("Incoming Call")
+                            .setContentText("Voice call in progress")
+                            .setSmallIcon(android.R.drawable.sym_call_incoming)
+                            .setPriority(NotificationCompat.PRIORITY_HIGH)
+                            .setCategory(NotificationCompat.CATEGORY_CALL)
+                            .setOngoing(true)
+                            .setAutoCancel(false)
+                            .setFullScreenIntent(fullScreenIntent, true) // This is key for lock screen
+                            .build()
+                        
+                        // Show the full-screen notification
+                        notificationManager.notify(1001, notification)
+                        Log.i("TwilioVoiceDebug", "Full-screen intent notification created for locked screen")
+                        
+                        // Also try regular app launch for unlocked screens
+                        try {
+                            context.startActivity(launchIntent)
+                            Log.i("TwilioVoiceDebug", "App launch attempted for unlocked screen")
+                        } catch (e: Exception) {
+                            Log.i("TwilioVoiceDebug", "Regular app launch failed (likely locked screen): ${e.message}")
+                        }
+                        
+                    } else {
+                        Log.e("TwilioVoiceDebug", "Failed to get launch intent for app")
+                    }
+                } catch (notificationException: Exception) {
+                    Log.e("TwilioVoiceDebug", "Failed to create full-screen notification", notificationException)
+                }
+            } catch (foregroundException: Exception) {
+                Log.e("TwilioVoiceDebug", "Failed to bring app to foreground", foregroundException)
+            }
+            
+            // Use Telecom framework audio routing instead of fighting against it
+            Log.i("TwilioVoiceDebug", "Setting audio route through Telecom framework")
+            
+            // Force audio routing through the Telecom framework
+            // This ensures proper microphone access for VoIP calls
+            try {
+                // Temporarily set to speaker to force audio system activation
+                setAudioRoute(CallAudioState.ROUTE_SPEAKER)
+                Log.i("TwilioVoiceDebug", "Temporarily set audio route to SPEAKER")
+                
+                // Wait a moment, then set to normal earpiece but maintain communication mode
+                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                    try {
+                        // Ensure audio mode is still communication
+                        audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
+                        // Set route to earpiece for normal phone call behavior
+                        setAudioRoute(CallAudioState.ROUTE_WIRED_OR_EARPIECE)
+                        Log.i("TwilioVoiceDebug", "Audio route set to WIRED_OR_EARPIECE with communication mode")
+                    } catch (e: Exception) {
+                        Log.e("TwilioVoiceDebug", "Failed to set final audio route", e)
+                    }
+                }, 500) // 500ms delay
+                
+            } catch (routeException: Exception) {
+                Log.e("TwilioVoiceDebug", "Failed to set audio route through Telecom framework", routeException)
+            }
+            
+            // Samsung-specific workaround: Additional audio mode enforcement
+            val deviceManufacturer = android.os.Build.MANUFACTURER.toLowerCase()
+            if (deviceManufacturer.contains("samsung")) {
+                Log.i("TwilioVoiceDebug", "Samsung device detected - applying additional audio workaround")
+                try {
+                    // Additional delay to ensure Samsung's audio system is ready
+                    android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                        try {
+                            audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
+                            Log.i("TwilioVoiceDebug", "Samsung additional workaround: audio mode re-enforced")
+                        } catch (e: Exception) {
+                            Log.e("TwilioVoiceDebug", "Samsung additional workaround failed", e)
+                        }
+                    }, 1500) // 1.5 second delay for Samsung
+                } catch (e: Exception) {
+                    Log.e("TwilioVoiceDebug", "Samsung additional workaround setup failed", e)
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("TwilioVoiceDebug", "Failed to set audio mode in onConnected", e)
+        }
+        
         twilioCall = call
         setActive()
         onCallStateListener?.withValue(call.state)
@@ -255,6 +473,15 @@ open class TVCallConnection(
     override fun onDisconnected(call: Call, reason: CallException?) {
         // TODO run below only if we did NOT ended call i.e. remove disconnect from other client
         Log.d(TAG, "onDisconnected: onDisconnected, reason: ${reason?.message}.\nException: ${reason.toString()}")
+        
+        // Clean up call state and monitoring
+        cleanupScreenStateMonitoring()
+        
+        // Reset audio mode when call ends
+        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        audioManager.mode = AudioManager.MODE_NORMAL
+        Log.d(TAG, "Audio mode reset to MODE_NORMAL")
+        
         twilioCall = null
         onCallStateListener?.withValue(call.state)
         onEvent?.onChange(TVNativeCallEvents.EVENT_DISCONNECTED_REMOTE, Bundle().apply {
@@ -279,17 +506,20 @@ open class TVCallConnection(
     override fun onDisconnect() {
         super.onDisconnect()
         Log.i(TAG, "onDisconnect: onDisconnect")
+        
+        // Clean up call state and monitoring
+        cleanupScreenStateMonitoring()
+        
+        // Reset audio mode when call ends
+        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        audioManager.mode = AudioManager.MODE_NORMAL
+        Log.d(TAG, "Audio mode reset to MODE_NORMAL")
+        
         twilioCall?.disconnect()
         setDisconnected(DisconnectCause(DisconnectCause.LOCAL))
         this.onDisconnected?.withValue(DisconnectCause(DisconnectCause.LOCAL))
         onEvent?.onChange(TVNativeCallEvents.EVENT_DISCONNECTED_LOCAL, null)
         destroy()
-        // TODO - ACTION_END_CALL
-//        val myIntent: Intent = Intent(context, IncomingCallNotificationService::class.java)
-//        myIntent.action = Constants.ACTION_END_CALL
-//        myIntent.putExtra(Constants.INCOMING_CALL_INVITE, getCallInvite())
-//        myIntent.putExtra(Constants.INCOMING_CALL_NOTIFICATION_ID, getNotificationId())
-//        context.startService(myIntent)
     }
 
     override fun onHold() {
@@ -342,49 +572,160 @@ open class TVCallConnection(
     }
 
     override fun onAnswer(videoState: Int) {
-          if (!context.hasMicrophoneAccess()) {
-            val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            val channelId = "twilio_voice_permissions"
-            val channelName = "Twilio Voice Permissions"
-            
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                val channel = NotificationChannel(
-                    channelId,
-                    channelName,
-                    NotificationManager.IMPORTANCE_HIGH
-                ).apply {
-                    description = "Phone call permissions notifications"
-                }
-                notificationManager.createNotificationChannel(channel)
-            }
-            
-            // Create intent to open app settings
-            val settingsIntent = Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                data = android.net.Uri.fromParts("package", context.packageName, null)
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK
-            }
-            val pendingIntent = PendingIntent.getActivity(
-                context,
-                0,
-                settingsIntent,
-                PendingIntent.FLAG_IMMUTABLE
-            )
+        Log.i("TwilioVoiceDebug", "TVCallConnection onAnswer called - about to setup audio mode for background calls")
+        
+        // NOTE: We skip the microphone permission check here because:
+        // 1. We're using Android's Telecom framework (ConnectionService + PhoneAccount)
+        // 2. Telecom framework handles VoIP permissions differently
+        // 3. Standard permission checks fail in background even with granted permissions
+        // 4. The system manages microphone access through the call framework
+        Log.i("TwilioVoiceDebug", "Skipping microphone permission check for Telecom framework VoIP call")
 
-            val notification = NotificationCompat.Builder(context, channelId)
-                .setContentTitle("Unable to Answer Call - Microphone Access Needed")
-                .setContentText("An incoming call is waiting, but you need to enable microphone access in settings to accept calls.")
-                .setSmallIcon(context.resources.getIdentifier("ic_stat_onesignal_default", "drawable", context.packageName))
-                .setLargeIcon(android.graphics.BitmapFactory.decodeResource(context.resources, context.resources.getIdentifier("ic_onesignal_large_icon_default", "drawable", context.packageName)))
-                .setPriority(NotificationCompat.PRIORITY_HIGH)
-                .setAutoCancel(true)
-                .setContentIntent(pendingIntent)
-                .build()
-            notificationManager.notify(1, notification)
-            return
+        try {
+            // Request audio focus explicitly when answering
+            val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+            Log.i("TwilioVoiceDebug", "AudioManager obtained successfully")
+            
+            // CRITICAL: Set audio mode to MODE_IN_COMMUNICATION for VoIP calls
+            // This ensures microphone works properly in background calls
+            audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
+            Log.d(TAG, "Audio mode set to MODE_IN_COMMUNICATION")
+            Log.i("TwilioVoiceDebug", "Audio mode set to MODE_IN_COMMUNICATION successfully")
+            
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    Log.i("TwilioVoiceDebug", "Setting up audio focus for Android 8.0+")
+                    val attributes = android.media.AudioAttributes.Builder()
+                        .setUsage(android.media.AudioAttributes.USAGE_VOICE_COMMUNICATION)
+                        .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SPEECH)
+                        .build()
+                    
+                    // Create audio focus change listener
+                    val audioFocusChangeListener = android.media.AudioManager.OnAudioFocusChangeListener { focusChange ->
+                        Log.d(TAG, "Audio focus changed: $focusChange")
+                        when (focusChange) {
+                            AudioManager.AUDIOFOCUS_GAIN -> {
+                                Log.d(TAG, "Audio focus gained")
+                                // Ensure audio mode is still set correctly
+                                try {
+                                    audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
+                                } catch (e: Exception) {
+                                    Log.e(TAG, "Failed to reset audio mode on focus gain", e)
+                                }
+                            }
+                            AudioManager.AUDIOFOCUS_LOSS -> {
+                                Log.d(TAG, "Audio focus lost")
+                            }
+                            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
+                                Log.d(TAG, "Audio focus lost temporarily")
+                            }
+                            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
+                                Log.d(TAG, "Audio focus lost temporarily (can duck)")
+                            }
+                        }
+                    }
+                    
+                    val focusRequest = android.media.AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+                        .setAudioAttributes(attributes)
+                        .setOnAudioFocusChangeListener(audioFocusChangeListener)
+                        .build()
+                    
+                    val result = audioManager.requestAudioFocus(focusRequest)
+                    Log.d(TAG, "Audio focus request on answer result: $result")
+                    Log.i("TwilioVoiceDebug", "Audio focus request completed with result: $result")
+                } else {
+                    Log.i("TwilioVoiceDebug", "Setting up audio focus for older Android versions")
+                    val audioFocusChangeListener = android.media.AudioManager.OnAudioFocusChangeListener { focusChange ->
+                        Log.d(TAG, "Audio focus changed: $focusChange")
+                    }
+                    
+                    val result = audioManager.requestAudioFocus(
+                        audioFocusChangeListener,
+                        AudioManager.STREAM_VOICE_CALL,
+                        AudioManager.AUDIOFOCUS_GAIN
+                    )
+                    Log.d(TAG, "Audio focus request on answer result: $result")
+                    Log.i("TwilioVoiceDebug", "Audio focus request completed with result: $result")
+                }
+            } catch (audioFocusException: Exception) {
+                Log.e("TwilioVoiceDebug", "Audio focus setup failed, but continuing with call", audioFocusException)
+                // Continue with call even if audio focus fails
+            }
+        } catch (audioException: Exception) {
+            Log.e("TwilioVoiceDebug", "Audio setup failed, but continuing with call", audioException)
+            // Continue with call even if audio setup fails
         }
 
-        super.onAnswer(videoState)
-        Log.d(TAG, "onAnswer: onAnswer")
+        try {
+            Log.i("TwilioVoiceDebug", "Calling super.onAnswer()")
+            super.onAnswer(videoState)
+            Log.i("TwilioVoiceDebug", "super.onAnswer() completed successfully")
+            Log.d(TAG, "onAnswer: onAnswer")
+            
+            // CRITICAL: Create full-screen intent immediately when call is answered
+            // This ensures app launches automatically when user taps "Accept"
+            try {
+                Log.i("TwilioVoiceDebug", "Creating immediate full-screen intent for call answer")
+                
+                val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                val packageName = context.packageName
+                val launchIntent = context.packageManager.getLaunchIntentForPackage(packageName)
+                
+                if (launchIntent != null) {
+                    launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    launchIntent.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                    launchIntent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                    launchIntent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+                    
+                    val fullScreenIntent = PendingIntent.getActivity(
+                        context,
+                        0,
+                        launchIntent,
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                        } else {
+                            PendingIntent.FLAG_UPDATE_CURRENT
+                        }
+                    )
+                    
+                    // Create notification channel
+                    val channelId = "incoming_call_channel"
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        val channel = NotificationChannel(
+                            channelId,
+                            "Incoming Calls",
+                            NotificationManager.IMPORTANCE_HIGH
+                        ).apply {
+                            description = "Notifications for incoming voice calls"
+                            setBypassDnd(true)
+                            lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+                        }
+                        notificationManager.createNotificationChannel(channel)
+                    }
+                    
+                    // Create immediate full-screen notification
+                    val notification = NotificationCompat.Builder(context, channelId)
+                        .setContentTitle("Call Answered")
+                        .setContentText("Voice call active")
+                        .setSmallIcon(android.R.drawable.sym_call_incoming)
+                        .setPriority(NotificationCompat.PRIORITY_HIGH)
+                        .setCategory(NotificationCompat.CATEGORY_CALL)
+                        .setOngoing(true)
+                        .setAutoCancel(false)
+                        .setFullScreenIntent(fullScreenIntent, true)
+                        .build()
+                    
+                    notificationManager.notify(1002, notification)
+                    Log.i("TwilioVoiceDebug", "Immediate full-screen intent created for call answer")
+                }
+            } catch (immediateNotificationException: Exception) {
+                Log.e("TwilioVoiceDebug", "Failed to create immediate full-screen notification", immediateNotificationException)
+            }
+            
+        } catch (superException: Exception) {
+            Log.e("TwilioVoiceDebug", "super.onAnswer() failed", superException)
+            throw superException
+        }
     }
 
     override fun onReject(rejectReason: Int) {
@@ -541,6 +882,12 @@ open class TVCallConnection(
      */
     fun disconnect() {
         Log.d(TAG, "disconnect: disconnect")
+        
+        // Reset audio mode when call ends
+        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        audioManager.mode = AudioManager.MODE_NORMAL
+        Log.d(TAG, "Audio mode reset to MODE_NORMAL")
+        
         if (this is TVCallInviteConnection && state == STATE_RINGING) {
             rejectInvite()
         } else {

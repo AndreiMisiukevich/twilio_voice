@@ -8,9 +8,11 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.media.AudioManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.PowerManager
 import android.telecom.*
 import android.util.Log
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
@@ -198,6 +200,10 @@ class TVConnectionService : ConnectionService() {
         fun getConnection(callSid: String): TVCallConnection? {
             return activeConnections[callSid]
         }
+
+        private var wakeLock: PowerManager.WakeLock? = null
+        private var audioManager: AudioManager? = null
+        private var audioFocusRequest: Any? = null
     }
 
 
@@ -477,6 +483,28 @@ class TVConnectionService : ConnectionService() {
     }
     //endregion
 
+    private fun acquireWakeLock() {
+        if (wakeLock == null) {
+            val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+            wakeLock = powerManager.newWakeLock(
+                PowerManager.PARTIAL_WAKE_LOCK,
+                "TwilioVoice:CallWakeLock"
+            ).apply {
+                setReferenceCounted(false)
+            }
+        }
+        wakeLock?.acquire(10*60*1000L /*10 minutes*/)
+    }
+
+    private fun releaseWakeLock() {
+        wakeLock?.let {
+            if (it.isHeld) {
+                it.release()
+            }
+        }
+        wakeLock = null
+    }
+
     override fun onCreateIncomingConnection(connectionManagerPhoneAccount: PhoneAccountHandle?, request: ConnectionRequest?): Connection {
         assert(request != null) { "ConnectionRequest cannot be null" }
         assert(connectionManagerPhoneAccount != null) { "ConnectionManagerPhoneAccount cannot be null" }
@@ -517,6 +545,8 @@ class TVConnectionService : ConnectionService() {
         connection.setRinging()
 
         startForegroundService()
+        acquireWakeLock()
+        requestAudioFocus()
         return connection
     }
 
@@ -603,6 +633,8 @@ class TVConnectionService : ConnectionService() {
         connection.extras = request.extras
 
         startForegroundService()
+        acquireWakeLock()
+        requestAudioFocus()
 
         return connection
     }
@@ -627,6 +659,8 @@ class TVConnectionService : ConnectionService() {
             if (activeConnections.containsKey(callSid)) {
                 activeConnections.remove(callSid)
             }
+            releaseWakeLock()
+            abandonAudioFocus()
             stopForegroundService()
             stopSelfSafe()
         }
@@ -635,6 +669,8 @@ class TVConnectionService : ConnectionService() {
                 if (activeConnections.containsKey(callSid)) {
                     activeConnections.remove(callSid)
                 }
+                releaseWakeLock()
+                abandonAudioFocus()
                 stopForegroundService()
                 stopSelfSafe()
             }
@@ -698,10 +734,12 @@ class TVConnectionService : ConnectionService() {
         val id = "${applicationContext.packageName}_calls"
         val name = applicationContext.appName
         val descriptionText = "Active Voice Calls"
-        val importance = NotificationManager.IMPORTANCE_NONE
+        val importance = NotificationManager.IMPORTANCE_HIGH
         val channel = NotificationChannel(id, name, importance).apply {
             description = descriptionText
             lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+            enableVibration(true)
+            enableLights(true)
         }
         val notificationManager: NotificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         notificationManager.createNotificationChannel(channel)
@@ -719,7 +757,7 @@ class TVConnectionService : ConnectionService() {
         return Notification.Builder(this, channel.id).apply {
             setOngoing(true)
             setContentTitle("Voice Calls")
-            setCategory(Notification.CATEGORY_SERVICE)
+            setCategory(Notification.CATEGORY_CALL)
             setContentIntent(pendingIntent)
             setSmallIcon(R.drawable.ic_microphone)
         }.build()
@@ -737,7 +775,7 @@ class TVConnectionService : ConnectionService() {
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 // Optional for Android +11, required for Android +14
-                startForeground(SERVICE_TYPE_MICROPHONE, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
+                startForeground(SERVICE_TYPE_MICROPHONE, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_PHONE_CALL)
             } else {
                 startForeground(SERVICE_TYPE_MICROPHONE, notification)
             }
@@ -755,5 +793,70 @@ class TVConnectionService : ConnectionService() {
         } catch (e: java.lang.Exception) {
             Log.w(TAG, "[VoiceConnectionService] can't stop foreground service :$e")
         }
+    }
+
+    private fun requestAudioFocus() {
+        if (audioManager == null) {
+            audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        }
+        
+        audioManager?.let { am ->
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                // Android 8.0 and above
+                val focusRequest = AudioManager.OnAudioFocusChangeListener { focusChange ->
+                    Log.d(TAG, "Audio focus changed: $focusChange")
+                    when (focusChange) {
+                        AudioManager.AUDIOFOCUS_LOSS -> {
+                            Log.d(TAG, "Audio focus lost")
+                        }
+                        AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
+                            Log.d(TAG, "Audio focus lost transient")
+                        }
+                        AudioManager.AUDIOFOCUS_GAIN -> {
+                            Log.d(TAG, "Audio focus gained")
+                        }
+                    }
+                }
+                
+                val attributes = android.media.AudioAttributes.Builder()
+                    .setUsage(android.media.AudioAttributes.USAGE_VOICE_COMMUNICATION)
+                    .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SPEECH)
+                    .build()
+                
+                audioFocusRequest = android.media.AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+                    .setAudioAttributes(attributes)
+                    .setAcceptsDelayedFocusGain(true)
+                    .setOnAudioFocusChangeListener(focusRequest)
+                    .build()
+                
+                val result = am.requestAudioFocus(audioFocusRequest as android.media.AudioFocusRequest)
+                Log.d(TAG, "Audio focus request result: $result")
+            } else {
+                // Android 7.1 and below
+                val focusListener = AudioManager.OnAudioFocusChangeListener { focusChange ->
+                    Log.d(TAG, "Audio focus changed: $focusChange")
+                }
+                
+                val result = am.requestAudioFocus(
+                    focusListener,
+                    AudioManager.STREAM_VOICE_CALL,
+                    AudioManager.AUDIOFOCUS_GAIN
+                )
+                Log.d(TAG, "Audio focus request result: $result")
+            }
+        }
+    }
+
+    private fun abandonAudioFocus() {
+        audioManager?.let { am ->
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                audioFocusRequest?.let { request ->
+                    am.abandonAudioFocusRequest(request as android.media.AudioFocusRequest)
+                }
+            } else {
+                am.abandonAudioFocus(null)
+            }
+        }
+        audioFocusRequest = null
     }
 }
