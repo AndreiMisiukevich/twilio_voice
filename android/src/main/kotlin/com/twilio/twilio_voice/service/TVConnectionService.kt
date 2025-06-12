@@ -11,6 +11,8 @@ import android.content.pm.ServiceInfo
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.telecom.*
 import android.util.Log
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
@@ -41,6 +43,7 @@ class TVConnectionService : ConnectionService() {
 
     companion object {
         val TAG = "TwilioVoiceConnectionService"
+        private const val ACCEPT_DELAY_MS = 400L // Delay to let IncomingCallActivity fully resume before opening mic
 
         val activeConnections = HashMap<String, TVCallConnection>()
 
@@ -316,7 +319,22 @@ class TVConnectionService : ConnectionService() {
                     }
 
                     if(connection is TVCallInviteConnection) {
-                        connection.acceptInvite()
+                        try {
+                            val launchIntent = Intent(applicationContext, com.twilio.twilio_voice.ui.IncomingCallActivity::class.java)
+                            launchIntent.addFlags(
+                                Intent.FLAG_ACTIVITY_NEW_TASK or
+                                    Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                                    Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                                    Intent.FLAG_ACTIVITY_NO_USER_ACTION
+                            )
+                            applicationContext.startActivity(launchIntent)
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Unable to bring main activity to foreground: $e")
+                        }
+
+                        Handler(Looper.getMainLooper()).postDelayed({
+                            connection.acceptInvite()
+                        }, ACCEPT_DELAY_MS)
                     } else {
                         Log.e(TAG, "onStartCommand: [ACTION_ANSWER] could not find connection for callHandle: $callHandle")
                     }
@@ -628,6 +646,12 @@ class TVConnectionService : ConnectionService() {
                 activeConnections.remove(callSid)
             }
             stopForegroundService()
+            // Broadcast call ended event so IncomingCallActivity can finish
+            Intent(applicationContext, TVBroadcastReceiver::class.java).apply {
+                action = TVBroadcastReceiver.ACTION_CALL_ENDED
+                putExtra(EXTRA_CALL_HANDLE, callSid)
+                LocalBroadcastManager.getInstance(applicationContext).sendBroadcast(this)
+            }
             stopSelfSafe()
         }
         val onCallState: CompletionHandler<Call.State> = CompletionHandler { state ->
@@ -636,6 +660,12 @@ class TVConnectionService : ConnectionService() {
                     activeConnections.remove(callSid)
                 }
                 stopForegroundService()
+                // Broadcast call ended event so IncomingCallActivity can finish (fallback)
+                Intent(applicationContext, TVBroadcastReceiver::class.java).apply {
+                    action = TVBroadcastReceiver.ACTION_CALL_ENDED
+                    putExtra(EXTRA_CALL_HANDLE, callSid)
+                    LocalBroadcastManager.getInstance(applicationContext).sendBroadcast(this)
+                }
                 stopSelfSafe()
             }
         }
@@ -719,7 +749,7 @@ class TVConnectionService : ConnectionService() {
         return Notification.Builder(this, channel.id).apply {
             setOngoing(true)
             setContentTitle("Voice Calls")
-            setCategory(Notification.CATEGORY_SERVICE)
+            setCategory(Notification.CATEGORY_CALL)
             setContentIntent(pendingIntent)
             setSmallIcon(R.drawable.ic_microphone)
         }.build()
