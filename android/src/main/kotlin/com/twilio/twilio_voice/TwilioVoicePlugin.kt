@@ -1579,14 +1579,17 @@ class TwilioVoicePlugin : FlutterPlugin, MethodCallHandler, EventChannel.StreamH
         if (shouldShowRationale) {
             var proceedClicked = false
             val clickListener =
-                DialogInterface.OnClickListener { _: DialogInterface?, _: Int ->
+                DialogInterface.OnClickListener { dialog: DialogInterface?, _: Int ->
                     proceedClicked = true
+                    dialog?.dismiss()
+                }
+
+            val dismissListener = DialogInterface.OnDismissListener { _: DialogInterface? ->
+                if (proceedClicked) {
                     ActivityCompat.requestPermissions(
                         activity!!, arrayOf(manifestPermission), requestCode
                     )
-                }
-            val dismissListener = DialogInterface.OnDismissListener { _: DialogInterface? ->
-                if (!proceedClicked) {
+                } else {
                     logEvent("Request${permissionName}AccessDismissed")
                     permissionResultHandler[requestCode]?.invoke(false)
                     permissionResultHandler.remove(requestCode)
