@@ -6,6 +6,9 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.util.Log
 import android.view.WindowManager
 import android.widget.TextView
 import android.view.Gravity
@@ -13,8 +16,15 @@ import android.graphics.Color
 import android.widget.FrameLayout
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import com.twilio.twilio_voice.receivers.TVBroadcastReceiver
+import com.twilio.twilio_voice.service.TVConnectionService
+import com.twilio.twilio_voice.service.TVCallInviteConnection
 
 class IncomingCallActivity : Activity() {
+    companion object {
+        private const val TAG = "IncomingCallActivity"
+        private const val ACCEPT_DELAY_MS = 10000L // Delay to let activity fully resume before opening mic
+    }
+
     private val callEndedReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             finish()
@@ -55,6 +65,38 @@ class IncomingCallActivity : Activity() {
             callEndedReceiver,
             IntentFilter(TVBroadcastReceiver.ACTION_CALL_ENDED)
         )
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Accept the incoming call after a delay
+        acceptIncomingCall()
+    }
+
+    private fun acceptIncomingCall() {
+        Handler(Looper.getMainLooper()).postDelayed({
+            try {
+                val incomingCallHandle = TVConnectionService.getIncomingCallHandle()
+                if (incomingCallHandle != null) {
+                    val connection = TVConnectionService.getConnection(incomingCallHandle)
+                    if (connection is TVCallInviteConnection) {
+                        // Check if call is still ringing (not already accepted)
+                        if (connection.state == android.telecom.Connection.STATE_RINGING) {
+                            Log.d(TAG, "Accepting incoming call with handle: $incomingCallHandle")
+                            connection.acceptInvite()
+                        } else {
+                            Log.d(TAG, "Call is already accepted or in different state: ${connection.state}")
+                        }
+                    } else {
+                        Log.e(TAG, "Connection is not a TVCallInviteConnection or not found")
+                    }
+                } else {
+                    Log.e(TAG, "No incoming call handle found")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error accepting incoming call: ${e.message}")
+            }
+        }, ACCEPT_DELAY_MS)
     }
 
     override fun onDestroy() {

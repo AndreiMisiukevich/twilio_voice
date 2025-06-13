@@ -332,9 +332,10 @@ class TVConnectionService : ConnectionService() {
                             Log.w(TAG, "Unable to bring main activity to foreground: $e")
                         }
 
-                        Handler(Looper.getMainLooper()).postDelayed({
-                            connection.acceptInvite()
-                        }, ACCEPT_DELAY_MS)
+                        // Call acceptance is now handled by IncomingCallActivity
+                        // Handler(Looper.getMainLooper()).postDelayed({
+                        //     connection.acceptInvite()
+                        // }, ACCEPT_DELAY_MS)
                     } else {
                         Log.e(TAG, "onStartCommand: [ACTION_ANSWER] could not find connection for callHandle: $callHandle")
                     }

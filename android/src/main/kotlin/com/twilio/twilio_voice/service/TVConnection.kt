@@ -68,16 +68,16 @@ class TVCallInviteConnection(
         } catch (e: Exception) {
             Log.w(TAG, "Unable to launch IncomingCallActivity from onAnswer: $e")
         }
+    }
+
+    fun acceptInvite() {
+        Log.d(TAG, "acceptInvite: acceptInvite")
+        // Accept the call invite without triggering onAnswer() to avoid infinite loop
         twilioCall = callInvite.accept(context, this)
         onAction?.onChange(TVNativeCallActions.ACTION_ANSWERED, Bundle().apply {
             putParcelable(TVBroadcastReceiver.EXTRA_CALL_INVITE, callInvite)
             putInt(TVBroadcastReceiver.EXTRA_CALL_DIRECTION, callDirection.id)
         })
-    }
-
-    fun acceptInvite() {
-        Log.d(TAG, "acceptInvite: acceptInvite")
-        onAnswer()
     }
 
     fun rejectInvite() {
