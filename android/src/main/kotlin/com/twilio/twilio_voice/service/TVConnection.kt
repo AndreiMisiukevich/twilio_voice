@@ -57,6 +57,17 @@ class TVCallInviteConnection(
     override fun onAnswer() {
         Log.d(TAG, "onAnswer: onAnswer")
         super.onAnswer()
+        try {
+            val launchIntent = Intent(context, com.twilio.twilio_voice.ui.IncomingCallActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or
+                    Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                    Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                    Intent.FLAG_ACTIVITY_NO_USER_ACTION)
+            }
+            context.startActivity(launchIntent)
+        } catch (e: Exception) {
+            Log.w(TAG, "Unable to launch IncomingCallActivity from onAnswer: $e")
+        }
         twilioCall = callInvite.accept(context, this)
         onAction?.onChange(TVNativeCallActions.ACTION_ANSWERED, Bundle().apply {
             putParcelable(TVBroadcastReceiver.EXTRA_CALL_INVITE, callInvite)
