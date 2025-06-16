@@ -10,4 +10,8 @@
         <item name="android:textColorPrimary">@color/dialog_text_primary</item>
         <item name="android:textColorSecondary">@color/dialog_text_secondary</item>
     </style>
+    <style name="TransparentCallTheme" parent="@android:style/Theme.Translucent.NoTitleBar">
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:backgroundDimEnabled">false</item>
+    </style>
 </resources>

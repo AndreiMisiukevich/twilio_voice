@@ -34,6 +34,12 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import androidx.core.app.NotificationCompat
 import android.app.PendingIntent
+import android.os.Handler
+import android.os.Looper
+import com.twilio.twilio_voice.service.TVConnectionService
+import android.content.BroadcastReceiver
+import android.content.IntentFilter
+
 
 
 class TVCallInviteConnection(
@@ -56,12 +62,55 @@ class TVCallInviteConnection(
 
     override fun onAnswer() {
         Log.d(TAG, "onAnswer: onAnswer")
-        super.onAnswer()
-        twilioCall = callInvite.accept(context, this)
-        onAction?.onChange(TVNativeCallActions.ACTION_ANSWERED, Bundle().apply {
-            putParcelable(TVBroadcastReceiver.EXTRA_CALL_INVITE, callInvite)
-            putInt(TVBroadcastReceiver.EXTRA_CALL_DIRECTION, callDirection.id)
-        })
+        
+        var isCallAccepted = false
+        
+        fun acceptCall(receiver: BroadcastReceiver) {
+            try {
+                LocalBroadcastManager.getInstance(context).unregisterReceiver(receiver)
+            } catch (_: Exception) {}
+
+            if (isCallAccepted) {
+                return
+            }
+
+            isCallAccepted = true
+
+            super.onAnswer()
+            twilioCall = callInvite.accept(context, this)
+            onAction?.onChange(TVNativeCallActions.ACTION_ANSWERED, Bundle().apply {
+                putParcelable(TVBroadcastReceiver.EXTRA_CALL_INVITE, callInvite)
+                putInt(TVBroadcastReceiver.EXTRA_CALL_DIRECTION, callDirection.id)
+            })
+        }
+
+        val incomingCallServiceReadyReceiver = object : android.content.BroadcastReceiver() {
+            override fun onReceive(c: android.content.Context?, i: android.content.Intent?) {
+                acceptCall(this)
+            }
+        }
+
+        LocalBroadcastManager.getInstance(context).registerReceiver(
+            incomingCallServiceReadyReceiver,
+            android.content.IntentFilter(TVConnectionService.ACTION_INCOMING_CALL_SERVICE_READY)
+        )
+
+        Handler(Looper.getMainLooper()).postDelayed({
+            acceptCall(incomingCallServiceReadyReceiver)
+        }, 3000)
+
+        try {
+            val launchIntent = Intent(context, com.twilio.twilio_voice.ui.IncomingCallActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or
+                    Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                    Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                    Intent.FLAG_ACTIVITY_NO_USER_ACTION)
+            }
+            context.startActivity(launchIntent)
+        } catch (e: Exception) {
+            Log.w(TAG, "Unable to launch IncomingCallActivity from onAnswer: $e")
+            acceptCall(incomingCallServiceReadyReceiver)
+        }
     }
 
     fun acceptInvite() {

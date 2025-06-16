@@ -1699,7 +1699,7 @@ class TwilioVoicePlugin : FlutterPlugin, MethodCallHandler, EventChannel.StreamH
                     }
 //                callSid = null
                 Log.d(TAG, "handleBroadcastIntent: Call ended $callHandle")
-                logEvent("", "Call ended")
+                logEvent("", "Call Ended")
             }
 
             TVBroadcastReceiver.ACTION_CALL_STATE -> {
