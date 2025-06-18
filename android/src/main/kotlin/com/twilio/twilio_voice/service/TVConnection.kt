@@ -218,6 +218,7 @@ open class TVCallConnection(
         onDisconnected?.withValue(disconnectCause)
         onEvent?.onChange(TVNativeCallEvents.EVENT_CONNECT_FAILURE, callException.toBundle())
         onCallStateListener?.withValue(call.state)
+        destroy()
     }
 
     /**
