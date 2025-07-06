@@ -679,7 +679,8 @@ namespace twilio_voice
           unregister_script,
           [shared_result](void *, std::string result)
           {
-            if (result == "true")
+            // Device has been successfully unregistered or no device to unregister (i.e., twilio is not configured) - this is considered a successful operation
+            if (result == "true" || result == "false")
             {
               (*shared_result)->Success(true);
             }
