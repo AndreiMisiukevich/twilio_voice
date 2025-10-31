@@ -60,6 +60,8 @@ public class TwilioVoicePlugin: NSObject, FlutterPlugin, FlutterStreamHandler, T
 
     private var test: Bool = false
 
+    private var callActivity: NSObjectProtocol?
+
     static var appName: String {
         get {
             (Bundle.main.infoDictionary!["CFBundleName"] as? String) ?? "Define CFBundleName"
@@ -112,8 +114,13 @@ public class TwilioVoicePlugin: NSObject, FlutterPlugin, FlutterStreamHandler, T
         // CallKit has an odd API contract where the developer must call invalidate or the CXProvider is leaked.
         twilioDevice?.dispose()
         twilioDevice = nil
+        if let activity = callActivity {
+            ProcessInfo.processInfo.endActivity(activity)
+            callActivity = nil
+        }
         twilioCall?.dispose()
         twilioCall = nil
+        eventSink = nil
     }
 
 
@@ -1273,6 +1280,9 @@ public class TwilioVoicePlugin: NSObject, FlutterPlugin, FlutterStreamHandler, T
     // MARK: - TVCallDelegate
 
     public func onCallAccept(_ call: TVCall) {
+        if callActivity == nil {
+            callActivity = ProcessInfo.processInfo.beginActivity(options: [.userInitiated, .idleSystemSleepDisabled], reason: "Active VoIP call")
+        }
         call.direction { direction, error in
             if let error = error {
                 print("Error: \(error)")
@@ -1316,6 +1326,11 @@ public class TwilioVoicePlugin: NSObject, FlutterPlugin, FlutterStreamHandler, T
             }
         }
 
+        if let activity = callActivity {
+            ProcessInfo.processInfo.endActivity(activity)
+            callActivity = nil
+        }
+
         twilioCall?.dispose()
         twilioCall = nil
         logEvent(prefix: "", description: "Missed Call")
@@ -1332,6 +1347,11 @@ public class TwilioVoicePlugin: NSObject, FlutterPlugin, FlutterStreamHandler, T
             if status == .closed {
                 self.logEvent(prefix: "", description: "Call Ended")
             }
+        }
+
+        if let activity = callActivity {
+            ProcessInfo.processInfo.endActivity(activity)
+            callActivity = nil
         }
 
         twilioCall?.dispose()
@@ -1351,9 +1371,12 @@ public class TwilioVoicePlugin: NSObject, FlutterPlugin, FlutterStreamHandler, T
     }
 
     public func onCallReject() {
-        if twilioCall != nil {
-            twilioCall = nil
+        if let activity = callActivity {
+            ProcessInfo.processInfo.endActivity(activity)
+            callActivity = nil
         }
+        twilioCall?.dispose()
+        twilioCall = nil
         logEvent(description: "Call Rejected")
     }
 
