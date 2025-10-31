@@ -7,7 +7,9 @@ public class TVWebView: WKWebView, WKUIDelegate {
     var loggingEnabled: Bool = false
 
     init(messageHandler: String, loggingEnabled: Bool = false) {
-        super.init(frame: CGRect.zero, configuration: WKWebViewConfiguration())
+        let configuration = WKWebViewConfiguration()
+        configuration.mediaTypesRequiringUserActionForPlayback = []
+        super.init(frame: CGRect.zero, configuration: configuration)
         self.loggingEnabled = loggingEnabled
 
         let bundle = Bundle(for: TwilioVoicePlugin.self)
