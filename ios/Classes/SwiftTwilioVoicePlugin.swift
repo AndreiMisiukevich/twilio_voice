@@ -128,6 +128,9 @@ public class SwiftTwilioVoicePlugin: NSObject, FlutterPlugin,  FlutterStreamHand
                         self.sendPhoneCallEvents(description: "LOG|Successfully registered for VoIP push notifications.", isError: false)
                     }
                 }
+            } else {
+                self.sendPhoneCallEvents(description: "LOG|Missing device token, requesting VoIP token refresh", isError: false)
+                self.requestVoIPTokenRefresh()
             }
         } else if flutterCall.method == "makeCall" {
             guard let callTo = arguments["To"] as? String else {return}
@@ -270,14 +273,7 @@ public class SwiftTwilioVoicePlugin: NSObject, FlutterPlugin,  FlutterStreamHand
             }
         }
         else if flutterCall.method == "unregister" {
-            guard let deviceToken = deviceToken else {
-                return
-            }
-            if let token = arguments["accessToken"] as? String{
-                self.unregisterTokens(token: token, deviceToken: deviceToken)
-            }else if let token = accessToken{
-                self.unregisterTokens(token: token, deviceToken: deviceToken)
-            }
+            self.unregisterTokens(accessToken: (arguments["accessToken"] as? String) ?? accessToken, deviceToken: deviceToken)
             
         }else if flutterCall.method == "hangUp"{
             if (self.callInvite != nil || self.call != nil) {
@@ -499,30 +495,40 @@ public class SwiftTwilioVoicePlugin: NSObject, FlutterPlugin,  FlutterStreamHand
             return
         }
         
-        self.unregister()
+        self.unregisterTokens(accessToken: accessToken, deviceToken: deviceToken, clearDeviceToken: true)
     }
     
     func unregister() {
-        
-        guard let deviceToken = deviceToken, let token = accessToken else {
-            return
-        }
-        
-        self.unregisterTokens(token: token, deviceToken: deviceToken)
+        self.unregisterTokens(accessToken: accessToken, deviceToken: deviceToken)
     }
     
-    func unregisterTokens(token: String, deviceToken: Data) {
-        TwilioVoiceSDK.unregister(accessToken: token, deviceToken: deviceToken) { (error) in
-            if let error = error {
-                self.sendPhoneCallEvents(description: "LOG|An error occurred while unregistering: \(error.localizedDescription)", isError: false)
-            } else {
-                self.sendPhoneCallEvents(description: "LOG|Successfully unregistered from VoIP push notifications.", isError: false)
+    private func unregisterTokens(accessToken: String?, deviceToken: Data?, clearDeviceToken: Bool = false) {
+        if let accessToken = accessToken, let deviceToken = deviceToken {
+            TwilioVoiceSDK.unregister(accessToken: accessToken, deviceToken: deviceToken) { (error) in
+                if let error = error {
+                    self.sendPhoneCallEvents(description: "LOG|An error occurred while unregistering: \(error.localizedDescription)", isError: false)
+                } else {
+                    self.sendPhoneCallEvents(description: "LOG|Successfully unregistered from VoIP push notifications.", isError: false)
+                }
             }
         }
-        UserDefaults.standard.removeObject(forKey: kCachedDeviceToken)
+        
+        if clearDeviceToken {
+            UserDefaults.standard.removeObject(forKey: kCachedDeviceToken)
+        }
         
         // Remove the cached binding as credentials are invalidated
         UserDefaults.standard.removeObject(forKey: kCachedBindingDate)
+    }
+    
+    /// Triggers PKPushRegistry to request a fresh VoIP token if one is not currently cached.
+    private func requestVoIPTokenRefresh() {
+        guard deviceToken == nil else { return }
+        
+        DispatchQueue.main.async {
+            self.voipRegistry.desiredPushTypes = Set<PKPushType>()
+            self.voipRegistry.desiredPushTypes = Set([PKPushType.voIP])
+        }
     }
     
     /**
