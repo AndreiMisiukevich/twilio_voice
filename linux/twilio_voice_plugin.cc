@@ -18,16 +18,13 @@ struct _TwilioVoicePlugin {
   FlPluginRegistrar* registrar;
   FlMethodChannel* method_channel;
   FlEventChannel* event_channel;
-  FlEventSink* event_sink;
 };
 
 G_DEFINE_TYPE(TwilioVoicePlugin, twilio_voice_plugin, g_object_get_type())
 
 // Helper to log stub calls in debug builds
 static void log_stub(const gchar* method) {
-#ifdef DEBUG
-  g_print("twilio_voice: %s called on Linux (stub - no-op)\n", method);
-#endif
+  g_debug("twilio_voice: %s called on Linux (stub - no-op)", method);
 }
 
 // Handle method calls from Flutter
@@ -89,10 +86,10 @@ static void twilio_voice_plugin_handle_method_call(
     log_stub(method);
     response = FL_METHOD_RESPONSE(fl_method_success_response_new(fl_value_new_null()));
   }
-  // Unknown method
+  // Unknown method - still return success with false to avoid exceptions
   else {
     log_stub(method);
-    response = FL_METHOD_RESPONSE(fl_method_not_implemented_response_new());
+    response = FL_METHOD_RESPONSE(fl_method_success_response_new(fl_value_new_bool(FALSE)));
   }
 
   fl_method_call_respond(method_call, response, nullptr);
@@ -106,24 +103,23 @@ static void method_call_cb(FlMethodChannel* channel,
   twilio_voice_plugin_handle_method_call(plugin, method_call);
 }
 
-// Event channel listen callback
+// Event channel listen callback - called when Dart subscribes to the stream
 static FlMethodErrorResponse* event_channel_listen_cb(
     FlEventChannel* channel,
     FlValue* args,
     gpointer user_data) {
-  TwilioVoicePlugin* plugin = TWILIO_VOICE_PLUGIN(user_data);
-  // Store the event sink for potential future use
-  // Note: In a real implementation, you'd send events through this sink
+  g_debug("twilio_voice: Event channel listen activated (stub)");
+  // Return nullptr to indicate success - the stream is now "listening"
+  // In a real implementation, you'd store the channel and send events through it
   return nullptr;
 }
 
-// Event channel cancel callback
+// Event channel cancel callback - called when Dart cancels the stream subscription
 static FlMethodErrorResponse* event_channel_cancel_cb(
     FlEventChannel* channel,
     FlValue* args,
     gpointer user_data) {
-  TwilioVoicePlugin* plugin = TWILIO_VOICE_PLUGIN(user_data);
-  plugin->event_sink = nullptr;
+  g_debug("twilio_voice: Event channel cancelled");
   return nullptr;
 }
 
@@ -140,7 +136,10 @@ static void twilio_voice_plugin_class_init(TwilioVoicePluginClass* klass) {
   G_OBJECT_CLASS(klass)->dispose = twilio_voice_plugin_dispose;
 }
 
-static void twilio_voice_plugin_init(TwilioVoicePlugin* self) {}
+static void twilio_voice_plugin_init(TwilioVoicePlugin* self) {
+  self->method_channel = nullptr;
+  self->event_channel = nullptr;
+}
 
 void twilio_voice_plugin_register_with_registrar(FlPluginRegistrar* registrar) {
   TwilioVoicePlugin* plugin = TWILIO_VOICE_PLUGIN(
@@ -148,30 +147,34 @@ void twilio_voice_plugin_register_with_registrar(FlPluginRegistrar* registrar) {
   
   plugin->registrar = registrar;
   
-  // Setup method channel
-  g_autoptr(FlStandardMethodCodec) codec = fl_standard_method_codec_new();
+  FlBinaryMessenger* messenger = fl_plugin_registrar_get_messenger(registrar);
+  
+  // Create codec for method channel
+  FlStandardMethodCodec* method_codec = fl_standard_method_codec_new();
   plugin->method_channel = fl_method_channel_new(
-      fl_plugin_registrar_get_messenger(registrar),
+      messenger,
       kMethodChannelName,
-      FL_METHOD_CODEC(codec));
+      FL_METHOD_CODEC(method_codec));
   fl_method_channel_set_method_call_handler(
       plugin->method_channel,
       method_call_cb,
       g_object_ref(plugin),
       g_object_unref);
+  g_object_unref(method_codec);
   
-  // Setup event channel
+  // Create separate codec for event channel
+  FlStandardMethodCodec* event_codec = fl_standard_method_codec_new();
   plugin->event_channel = fl_event_channel_new(
-      fl_plugin_registrar_get_messenger(registrar),
+      messenger,
       kEventChannelName,
-      FL_METHOD_CODEC(codec));
+      FL_METHOD_CODEC(event_codec));
   fl_event_channel_set_stream_handlers(
       plugin->event_channel,
       event_channel_listen_cb,
       event_channel_cancel_cb,
       g_object_ref(plugin),
       g_object_unref);
+  g_object_unref(event_codec);
 
   g_object_unref(plugin);
 }
-
